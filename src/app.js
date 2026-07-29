@@ -8,6 +8,11 @@ import {
   undoLastSettlement,
   updateGameScore,
 } from "./swiss.js";
+import {
+  buildResultsCsv,
+  getFinalPlacements,
+  scoreText,
+} from "./results.js";
 
 const STORAGE_KEY = "zoo-swiss-tournament-v2";
 const QUICK_SCORES = [11, 15, 21, 25, 31];
@@ -24,7 +29,10 @@ render();
 
 importButton.addEventListener("click", () => importFile.click());
 importFile.addEventListener("change", importTournament);
-exportButton.addEventListener("click", exportTournament);
+exportButton.addEventListener("click", openExportMenu);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeExportMenu();
+});
 
 function render() {
   exportButton.hidden = !tournament;
@@ -181,28 +189,34 @@ function renderTournament() {
 
       ${renderPhaseTrack()}
 
-      <div class="summary-grid">
-        <article class="summary-card">
-          <span>当前阶段</span>
-          <strong>${complete ? "已完赛" : escapeHtml(currentRound.name)}</strong>
-          <small>${complete ? "冠军已经产生" : roundRuleSummary(currentRound)}</small>
-        </article>
-        <article class="summary-card summary-green">
-          <span>已晋级八强</span>
-          <strong>${qualifiedCount}<i>/ 8</i></strong>
-          <small>瑞士轮达到 3 胜</small>
-        </article>
-        <article class="summary-card summary-red">
-          <span>瑞士轮淘汰</span>
-          <strong>${eliminatedCount}<i>/ 8</i></strong>
-          <small>瑞士轮达到 3 负</small>
-        </article>
-        <article class="summary-card">
-          <span>已录结果</span>
-          <strong>${completedMatchCount}</strong>
-          <small>比分可选，胜者必选</small>
-        </article>
-      </div>
+      ${
+        complete
+          ? ""
+          : `
+            <div class="summary-grid">
+              <article class="summary-card">
+                <span>当前阶段</span>
+                <strong>${escapeHtml(currentRound.name)}</strong>
+                <small>${roundRuleSummary(currentRound)}</small>
+              </article>
+              <article class="summary-card summary-green">
+                <span>已晋级八强</span>
+                <strong>${qualifiedCount}<i>/ 8</i></strong>
+                <small>瑞士轮达到 3 胜</small>
+              </article>
+              <article class="summary-card summary-red">
+                <span>瑞士轮淘汰</span>
+                <strong>${eliminatedCount}<i>/ 8</i></strong>
+                <small>瑞士轮达到 3 负</small>
+              </article>
+              <article class="summary-card">
+                <span>已录结果</span>
+                <strong>${completedMatchCount}</strong>
+                <small>比分可选，胜者必选</small>
+              </article>
+            </div>
+          `
+      }
 
       ${
         complete
@@ -218,8 +232,10 @@ function renderTournament() {
       <button type="button" data-scroll-to="#current-stage"><span>●</span>录分</button>
       <button type="button" data-scroll-to="#standings"><span>≡</span>排名</button>
       <button type="button" data-scroll-to="#history"><span>↺</span>赛程</button>
-      <button type="button" data-export-mobile><span>⇩</span>存档</button>
+      <button type="button" data-export-mobile><span>⇩</span>导出</button>
     </nav>
+
+    ${renderExportMenu(complete)}
   `;
 
   bindTournamentActions(currentRound, complete);
@@ -378,15 +394,145 @@ function renderScoreSide(match, game, gameIndex, side, participant) {
 
 function renderCompletion(participantMap) {
   const champion = participantMap.get(tournament.knockout.championId);
+  const standings = getStandings(tournament);
+  const placements = getFinalPlacements(tournament, standings);
+  const runnerUp = placements.find((placement) => placement.rank === 2)?.participant;
+  const semifinalists = placements.filter((placement) => placement.rank === 3);
+  const quarterfinalists = placements.filter((placement) => placement.rank === 5);
+  const finalRound = tournament.knockout.rounds.find(
+    (round) => round.stage === "final",
+  );
+  const finalMatch = finalRound?.matches[0];
+  const finalScore = finalMatch ? scoreText(finalMatch) : "未记录";
+  const matchCount = allRounds(tournament).reduce(
+    (sum, round) => sum + round.matches.length,
+    0,
+  );
+
   return `
     <section class="completion" id="current-stage">
-      <div class="champion-mark">冠军</div>
-      <span class="step">TOURNAMENT COMPLETE</span>
-      <h2>${escapeHtml(champion.name)}</h2>
-      ${champion.affiliation ? `<p>${escapeHtml(champion.affiliation)}</p>` : ""}
-      <p>瑞士轮与三轮单败淘汰赛已经全部结束。</p>
-      <button class="button button-primary" id="completion-export" type="button">导出最终赛事存档</button>
+      <div class="completion-hero">
+        <div class="completion-status">
+          <span><i></i> 赛事已结算</span>
+          <small>${tournament.rounds.length} 轮瑞士轮 · 3 轮淘汰赛 · ${matchCount} 场比赛</small>
+        </div>
+        <div class="champion-crown" aria-hidden="true">01</div>
+        <span class="champion-label">CHAMPION · 冠军</span>
+        <h2>${escapeHtml(champion.name)}</h2>
+        ${champion.affiliation ? `<p class="champion-affiliation">${escapeHtml(champion.affiliation)}</p>` : ""}
+
+        <div class="final-result">
+          <div class="finalist winner">
+            <small>冠军</small>
+            <strong>${escapeHtml(champion.name)}</strong>
+          </div>
+          <div class="final-score">
+            <span>决赛</span>
+            <b>${escapeHtml(finalScore)}</b>
+            <small>15 分 · BO3</small>
+          </div>
+          <div class="finalist">
+            <small>亚军</small>
+            <strong>${escapeHtml(runnerUp?.name || "—")}</strong>
+          </div>
+        </div>
+
+        <div class="completion-primary-actions">
+          <button class="button button-primary" id="completion-export" type="button">
+            导出比赛结果 <span aria-hidden="true">⇩</span>
+          </button>
+          <button class="button button-ghost" id="completion-undo" type="button">
+            修改决赛结果
+          </button>
+        </div>
+      </div>
+
+      <div class="final-placements">
+        <div class="final-placements-heading">
+          <div>
+            <span class="step">FINAL PLACEMENTS</span>
+            <h3>最终名次</h3>
+          </div>
+          <small>本赛事未设置季军赛，因此两位半决赛负者并列季军</small>
+        </div>
+        <div class="podium-grid">
+          <article class="podium-card podium-first">
+            <span class="podium-rank">1</span>
+            <div><small>冠军</small><strong>${escapeHtml(champion.name)}</strong></div>
+            <b>WINNER</b>
+          </article>
+          <article class="podium-card podium-second">
+            <span class="podium-rank">2</span>
+            <div><small>亚军</small><strong>${escapeHtml(runnerUp?.name || "—")}</strong></div>
+            <b>FINALIST</b>
+          </article>
+        </div>
+        <div class="placement-groups">
+          <article>
+            <div class="placement-title"><span>3</span><strong>并列季军</strong></div>
+            <div class="placement-names">
+              ${semifinalists
+                .map(
+                  (placement) =>
+                    `<span>${escapeHtml(placement.participant.name)}</span>`,
+                )
+                .join("")}
+            </div>
+          </article>
+          <article>
+            <div class="placement-title"><span>5</span><strong>八强</strong></div>
+            <div class="placement-names">
+              ${quarterfinalists
+                .map(
+                  (placement) =>
+                    `<span>${escapeHtml(placement.participant.name)}</span>`,
+                )
+                .join("")}
+            </div>
+          </article>
+        </div>
+      </div>
     </section>
+  `;
+}
+
+function renderExportMenu(complete) {
+  return `
+    <div class="export-backdrop" id="export-menu" hidden>
+      <section class="export-sheet" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <div class="export-sheet-handle" aria-hidden="true"></div>
+        <div class="export-sheet-heading">
+          <div>
+            <span class="step">EXPORT RESULTS</span>
+            <h2 id="export-title">导出比赛结果</h2>
+          </div>
+          <button class="export-close" type="button" data-export-close aria-label="关闭">×</button>
+        </div>
+        <p class="export-intro">
+          长图适合发群和朋友圈；表格适合用 Excel 或 WPS 保存、打印和统计。
+        </p>
+        <div class="export-options">
+          <button type="button" data-export-format="image">
+            <span class="export-icon">▤</span>
+            <span><strong>长图结果</strong><small>PNG 图片 · 手机分享最方便</small></span>
+            <b>→</b>
+          </button>
+          <button type="button" data-export-format="table">
+            <span class="export-icon">▦</span>
+            <span><strong>表格结果</strong><small>CSV 表格 · Excel / WPS 可打开</small></span>
+            <b>→</b>
+          </button>
+        </div>
+        ${
+          complete
+            ? `<div class="export-ready"><span>✓</span> 已包含冠军、最终名次和完整赛果</div>`
+            : `<div class="export-ready export-ready-progress"><span>!</span> 赛事尚未结束，将导出当前进度</div>`
+        }
+        <button class="archive-export" type="button" data-export-format="archive">
+          导出赛事数据备份（JSON，可用于恢复比赛）
+        </button>
+      </section>
+    </div>
   `;
 }
 
@@ -574,8 +720,38 @@ function bindTournamentActions(currentRound, complete) {
     showToast("已创建新的空白赛事");
   });
 
-  document.querySelector("#completion-export")?.addEventListener("click", exportTournament);
-  document.querySelector("[data-export-mobile]")?.addEventListener("click", exportTournament);
+  document.querySelector("#completion-export")?.addEventListener("click", openExportMenu);
+  document.querySelector("#completion-undo")?.addEventListener("click", () => {
+    if (!window.confirm("返回决赛录分后，可以重新选择胜者或修改比分。确定继续吗？")) return;
+    try {
+      undoLastSettlement(tournament);
+      persist();
+      render();
+      showToast("已返回决赛录分");
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  document.querySelector("[data-export-mobile]")?.addEventListener("click", openExportMenu);
+  document.querySelector("[data-export-close]")?.addEventListener("click", closeExportMenu);
+  document.querySelector("#export-menu")?.addEventListener("click", (event) => {
+    if (event.target.id === "export-menu") closeExportMenu();
+  });
+  document.querySelectorAll("[data-export-format]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const format = button.dataset.exportFormat;
+      button.disabled = true;
+      try {
+        if (format === "image") await exportResultsImage();
+        if (format === "table") await exportResultsTable();
+        if (format === "archive") exportTournamentArchive();
+      } catch (error) {
+        showToast(`导出失败：${error.message}`, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   document.querySelectorAll("[data-scroll-to]").forEach((button) => {
     button.addEventListener("click", () =>
       document
@@ -703,20 +879,326 @@ function validateImport(imported) {
   }
 }
 
-function exportTournament() {
+function openExportMenu() {
+  if (!tournament) return;
+  const menu = document.querySelector("#export-menu");
+  if (!menu) return;
+  menu.hidden = false;
+  document.body.classList.add("modal-open");
+  menu.querySelector("[data-export-format]")?.focus();
+}
+
+function closeExportMenu() {
+  const menu = document.querySelector("#export-menu");
+  if (!menu) return;
+  menu.hidden = true;
+  document.body.classList.remove("modal-open");
+}
+
+async function exportResultsTable() {
+  if (!tournament) return;
+  const standings = getStandings(tournament);
+  const csv = buildResultsCsv(tournament, standings);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  closeExportMenu();
+  await shareOrDownload(
+    blob,
+    `${safeFilename(tournament.eventName)}-比赛结果.csv`,
+    `${tournament.eventName}比赛结果`,
+  );
+  showToast("比赛结果表格已导出");
+}
+
+async function exportResultsImage() {
+  if (!tournament) return;
+  showToast("正在生成比赛结果长图…");
+  const canvas = buildResultsCanvas(tournament, getStandings(tournament));
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (value) => (value ? resolve(value) : reject(new Error("无法生成图片"))),
+      "image/png",
+      0.96,
+    );
+  });
+  closeExportMenu();
+  await shareOrDownload(
+    blob,
+    `${safeFilename(tournament.eventName)}-比赛结果.png`,
+    `${tournament.eventName}比赛结果`,
+  );
+  showToast("比赛结果长图已导出");
+}
+
+function exportTournamentArchive() {
   if (!tournament) return;
   const blob = new Blob([JSON.stringify(tournament, null, 2)], {
     type: "application/json",
   });
+  closeExportMenu();
+  downloadBlob(
+    blob,
+    `${safeFilename(tournament.eventName)}-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`,
+  );
+  showToast("赛事数据备份已导出");
+}
+
+async function shareOrDownload(blob, filename, title) {
+  const file = new File([blob], filename, { type: blob.type });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title });
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  downloadBlob(blob, filename);
+}
+
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${safeFilename(tournament.eventName)}-${new Date()
-    .toISOString()
-    .slice(0, 10)}.json`;
+  anchor.download = filename;
+  document.body.append(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
-  showToast("赛事存档已导出");
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function buildResultsCanvas(value, standings) {
+  const width = 1080;
+  const margin = 64;
+  const rowHeight = 54;
+  const rounds = allRounds(value);
+  const matchCount = rounds.reduce((sum, round) => sum + round.matches.length, 0);
+  const height =
+    370 +
+    240 +
+    110 +
+    standings.length * rowHeight +
+    120 +
+    rounds.length * 64 +
+    matchCount * 48 +
+    100;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const participantMap = new Map(
+    value.participants.map((participant) => [participant.id, participant]),
+  );
+  const placements = getFinalPlacements(value, standings);
+  const champion = placements.find((placement) => placement.rank === 1)?.participant;
+  const runnerUp = placements.find((placement) => placement.rank === 2)?.participant;
+  const standingMap = new Map(
+    standings.map((participant) => [participant.id, participant]),
+  );
+  const resultRows =
+    placements.length > 0
+      ? placements
+      : standings.map((participant, index) => ({
+          participant,
+          rankText: `${index + 1}`,
+          label: participant.status === "qualified" ? "已晋级" : "瑞士轮",
+        }));
+
+  context.fillStyle = "#080b0f";
+  context.fillRect(0, 0, width, height);
+  const glow = context.createRadialGradient(width, 0, 10, width, 0, 700);
+  glow.addColorStop(0, "rgba(200,255,71,0.18)");
+  glow.addColorStop(1, "rgba(200,255,71,0)");
+  context.fillStyle = glow;
+  context.fillRect(0, 0, width, 700);
+
+  let y = 76;
+  context.fillStyle = "#c8ff47";
+  context.font = '900 32px "Microsoft YaHei", sans-serif';
+  context.fillText("ZOO", margin, y);
+  context.fillStyle = "#7e8981";
+  context.font = '500 22px "Microsoft YaHei", sans-serif';
+  context.fillText("瑞士轮赛事结果", margin + 98, y);
+
+  y += 78;
+  context.fillStyle = "#f5f7f3";
+  context.font = '900 54px "Microsoft YaHei", sans-serif';
+  drawCanvasText(context, value.eventName, margin, y, width - margin * 2, 64);
+  y += 82;
+  context.fillStyle = "#98a29a";
+  context.font = '500 22px "Microsoft YaHei", sans-serif';
+  context.fillText(
+    `${value.entrantType} · 16 参赛单位 · ${formatDate(value.updatedAt)}`,
+    margin,
+    y,
+  );
+
+  y += 54;
+  roundedRect(context, margin, y, width - margin * 2, 230, 28, "#11180f");
+  context.fillStyle = "#c8ff47";
+  context.font = '800 22px "Microsoft YaHei", sans-serif';
+  context.fillText(
+    value.phase === "complete" ? "TOURNAMENT CHAMPION · 冠军" : "CURRENT LEADER · 当前领先",
+    margin + 36,
+    y + 48,
+  );
+  context.fillStyle = "#f5f7f3";
+  context.font = '900 56px "Microsoft YaHei", sans-serif';
+  context.fillText(champion?.name || standings[0]?.name || "赛事进行中", margin + 36, y + 122);
+  context.fillStyle = "#98a29a";
+  context.font = '500 22px "Microsoft YaHei", sans-serif';
+  context.fillText(
+    champion?.affiliation || (value.phase === "complete" ? "最终冠军" : "按当前瑞士轮排名"),
+    margin + 36,
+    y + 164,
+  );
+  if (runnerUp) {
+    context.fillStyle = "#68736b";
+    context.font = '600 20px "Microsoft YaHei", sans-serif';
+    context.fillText(`亚军  ${runnerUp.name}`, margin + 36, y + 204);
+  }
+  context.fillStyle = "#c8ff47";
+  context.font = '900 96px Georgia, serif';
+  context.textAlign = "right";
+  context.fillText("01", width - margin - 34, y + 150);
+  context.textAlign = "left";
+
+  y += 286;
+  drawCanvasSectionTitle(
+    context,
+    value.phase === "complete" ? "最终名次 / 瑞士轮排名" : "当前瑞士轮排名",
+    margin,
+    y,
+  );
+  y += 48;
+  for (let index = 0; index < resultRows.length; index += 1) {
+    const listed = resultRows[index];
+    const participant = listed.participant;
+    const standing = standingMap.get(participant.id) || participant;
+    roundedRect(
+      context,
+      margin,
+      y,
+      width - margin * 2,
+      rowHeight - 6,
+      10,
+      index % 2 === 0 ? "#10151b" : "#0c1115",
+    );
+    context.fillStyle = listed.rank === 1 ? "#c8ff47" : "#77827a";
+    context.font = '800 20px "Microsoft YaHei", sans-serif';
+    context.fillText(listed.rankText, margin + 18, y + 32);
+    context.fillStyle = "#f5f7f3";
+    context.font = '700 21px "Microsoft YaHei", sans-serif';
+    context.fillText(participant.name, margin + 92, y + 32);
+    context.fillStyle = "#7e8981";
+    context.font = '500 18px "Microsoft YaHei", sans-serif';
+    context.fillText(listed.label, margin + 550, y + 32);
+    context.textAlign = "right";
+    context.fillText(
+      `${participant.wins}-${participant.losses}  对手分 ${standing.buchholz}`,
+      width - margin - 18,
+      y + 32,
+    );
+    context.textAlign = "left";
+    y += rowHeight;
+  }
+
+  y += 52;
+  drawCanvasSectionTitle(context, "完整赛果", margin, y);
+  y += 50;
+  for (const round of rounds) {
+    context.fillStyle = "#c8ff47";
+    context.font = '800 24px "Microsoft YaHei", sans-serif';
+    context.fillText(round.name, margin, y + 30);
+    context.fillStyle = "#68736b";
+    context.font = '500 17px "Microsoft YaHei", sans-serif';
+    context.textAlign = "right";
+    context.fillText(roundRuleSummary(round), width - margin, y + 30);
+    context.textAlign = "left";
+    y += 54;
+    for (const match of round.matches) {
+      const a = participantMap.get(match.aId);
+      const b = participantMap.get(match.bId);
+      context.fillStyle = match.winnerId === a?.id ? "#c8ff47" : "#aeb6b0";
+      context.font = `${match.winnerId === a?.id ? "800" : "500"} 19px "Microsoft YaHei", sans-serif`;
+      context.fillText(a?.name || "—", margin + 18, y + 29);
+      context.fillStyle = "#68736b";
+      context.font = '600 17px "Microsoft YaHei", sans-serif';
+      context.textAlign = "center";
+      context.fillText(scoreText(match), width / 2, y + 29);
+      context.textAlign = "right";
+      context.fillStyle = match.winnerId === b?.id ? "#c8ff47" : "#aeb6b0";
+      context.font = `${match.winnerId === b?.id ? "800" : "500"} 19px "Microsoft YaHei", sans-serif`;
+      context.fillText(b?.name || "—", width - margin - 18, y + 29);
+      context.textAlign = "left";
+      context.strokeStyle = "#202930";
+      context.beginPath();
+      context.moveTo(margin, y + 45);
+      context.lineTo(width - margin, y + 45);
+      context.stroke();
+      y += 48;
+    }
+    y += 10;
+  }
+
+  context.fillStyle = "#68736b";
+  context.font = '500 18px "Microsoft YaHei", sans-serif';
+  context.fillText("由 Zoo 瑞士轮赛事程序生成", margin, height - 48);
+  context.textAlign = "right";
+  context.fillText("比分为赛事现场记录，允许任意分数结算", width - margin, height - 48);
+  context.textAlign = "left";
+  return canvas;
+}
+
+function drawCanvasSectionTitle(context, text, x, y) {
+  context.fillStyle = "#f5f7f3";
+  context.font = '900 30px "Microsoft YaHei", sans-serif';
+  context.fillText(text, x, y);
+}
+
+function drawCanvasText(context, text, x, y, maxWidth, lineHeight) {
+  if (context.measureText(text).width <= maxWidth) {
+    context.fillText(text, x, y);
+    return;
+  }
+  let value = text;
+  while (value.length > 1 && context.measureText(`${value}…`).width > maxWidth) {
+    value = value.slice(0, -1);
+  }
+  context.fillText(`${value}…`, x, y);
+}
+
+function roundedRect(context, x, y, width, height, radius, fillStyle) {
+  context.beginPath();
+  if (typeof context.roundRect === "function") {
+    context.roundRect(x, y, width, height, radius);
+  } else {
+    const corner = Math.min(radius, width / 2, height / 2);
+    context.moveTo(x + corner, y);
+    context.lineTo(x + width - corner, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + corner);
+    context.lineTo(x + width, y + height - corner);
+    context.quadraticCurveTo(
+      x + width,
+      y + height,
+      x + width - corner,
+      y + height,
+    );
+    context.lineTo(x + corner, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - corner);
+    context.lineTo(x, y + corner);
+    context.quadraticCurveTo(x, y, x + corner, y);
+  }
+  context.closePath();
+  context.fillStyle = fillStyle;
+  context.fill();
+}
+
+function formatDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("zh-CN");
 }
 
 function safeFilename(value) {
