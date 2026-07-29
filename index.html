@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Zoo：适用于单打、双打和团体赛的 16 参赛单位瑞士轮赛事管理程序。"
+    />
+    <title>Zoo · 瑞士轮赛事管理</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="Zoo 首页">
+        <span class="brand-mark" aria-hidden="true">Z</span>
+        <span>
+          <strong>Zoo</strong>
+          <small>Swiss Tournament</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button class="button button-ghost" id="import-button" type="button">
+          导入赛事
+        </button>
+        <input id="import-file" type="file" accept="application/json,.json" hidden />
+        <button class="button button-ghost" id="export-button" type="button" hidden>
+          导出存档
+        </button>
+      </div>
+    </header>
+
+    <main id="app"></main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
