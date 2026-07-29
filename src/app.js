@@ -11,6 +11,7 @@ import {
 import {
   buildResultsCsv,
   getFinalPlacements,
+  getKnockoutBracket,
   getPerformanceStats,
   getScoringLeaders,
   recordText,
@@ -409,6 +410,7 @@ function renderCompletion(participantMap) {
   const runnerUpStats = performanceMap.get(runnerUp?.id);
   const semifinalists = placements.filter((placement) => placement.rank === 3);
   const scoringLeaders = getScoringLeaders(tournament);
+  const bracket = getKnockoutBracket(tournament);
   const topEight = placements
     .filter((placement) => placement.rank <= 5)
     .map((placement) => ({
@@ -518,6 +520,8 @@ function renderCompletion(participantMap) {
           </article>
         </div>
 
+        ${renderKnockoutBracket(bracket)}
+
         <div class="performance-board">
           <div class="performance-heading">
             <div><span class="step">TOP 8 PERFORMANCE</span><h3>八强战绩总览</h3></div>
@@ -543,6 +547,50 @@ function renderCompletion(participantMap) {
               )
               .join("")}
           </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderKnockoutBracket(bracket) {
+  if (!bracket) return "";
+
+  const renderLevel = (className, entries, label, hasChildren = true) => `
+    <div class="knockout-bracket-level ${className}">
+      ${entries
+        .map(({ participant, score }) => {
+          const championPath = participant.id === bracket.championId;
+          return `
+            <div class="knockout-bracket-slot ${championPath ? "is-champion-path" : ""}">
+              <article class="knockout-bracket-node">
+                <small>${label}</small>
+                <strong>${escapeHtml(participant.name)}</strong>
+                <span>${score ? escapeHtml(score) : `初始 #${String(participant.seed).padStart(2, "0")}`}</span>
+              </article>
+              ${hasChildren ? '<i class="knockout-bracket-fork" aria-hidden="true"></i>' : ""}
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+
+  return `
+    <section class="knockout-bracket-board">
+      <div class="knockout-bracket-heading">
+        <div>
+          <span class="step">TOP 8 BRACKET</span>
+          <h3>八强晋级路线</h3>
+        </div>
+        <small>荧光绿为冠军晋级路径 · 左右滑动查看完整对阵</small>
+      </div>
+      <div class="knockout-bracket-scroll" tabindex="0" aria-label="八强淘汰赛晋级路线图">
+        <div class="knockout-bracket-tree">
+          ${renderLevel("level-champion", [bracket.champion], "冠军")}
+          ${renderLevel("level-finalists", bracket.finalists, "决赛")}
+          ${renderLevel("level-semifinalists", bracket.semifinalists, "四强")}
+          ${renderLevel("level-quarterfinalists", bracket.quarterfinalists, "八强", false)}
         </div>
       </div>
     </section>
@@ -578,7 +626,7 @@ function renderExportMenu(complete) {
         </div>
         ${
           complete
-            ? `<div class="export-ready"><span>✓</span> 已包含四项荣誉、三类战绩、净胜分和完整赛果</div>`
+            ? `<div class="export-ready"><span>✓</span> 已包含八强晋级图、四项荣誉、三类战绩、净胜分和完整赛果</div>`
             : `<div class="export-ready export-ready-progress"><span>!</span> 赛事尚未结束，将导出当前进度</div>`
         }
         <button class="archive-export" type="button" data-export-format="archive">
@@ -1027,10 +1075,12 @@ function buildResultsCanvas(value, standings) {
   const margin = 64;
   const rowHeight = 54;
   const rounds = allRounds(value);
+  const bracket = getKnockoutBracket(value);
   const matchCount = rounds.reduce((sum, round) => sum + round.matches.length, 0);
   const height =
     370 +
     240 +
+    (bracket ? 760 : 0) +
     110 +
     standings.length * rowHeight +
     120 +
@@ -1124,6 +1174,10 @@ function buildResultsCanvas(value, standings) {
   context.textAlign = "left";
 
   y += 286;
+  if (bracket) {
+    drawCanvasKnockoutBracket(context, bracket, margin, y, width - margin * 2);
+    y += 730;
+  }
   drawCanvasSectionTitle(
     context,
     value.phase === "complete" ? "最终名次 / 瑞士轮排名" : "当前瑞士轮排名",
@@ -1208,6 +1262,103 @@ function buildResultsCanvas(value, standings) {
   context.fillText("比分为赛事现场记录，允许任意分数结算", width - margin, height - 48);
   context.textAlign = "left";
   return canvas;
+}
+
+function drawCanvasKnockoutBracket(context, bracket, x, y, width) {
+  drawCanvasSectionTitle(context, "八强晋级路线", x, y);
+  context.fillStyle = "#6f7a72";
+  context.font = '500 17px "Microsoft YaHei", sans-serif';
+  context.fillText("荧光绿为冠军晋级路径", x, y + 31);
+
+  const treeTop = y + 72;
+  const nodeHeight = 72;
+  const levelGap = 84;
+  const levelYs = [
+    treeTop,
+    treeTop + nodeHeight + levelGap,
+    treeTop + (nodeHeight + levelGap) * 2,
+    treeTop + (nodeHeight + levelGap) * 3,
+  ];
+  const levels = [
+    { entries: [bracket.champion], label: "冠军", width: 210 },
+    { entries: bracket.finalists, label: "决赛", width: 190 },
+    { entries: bracket.semifinalists, label: "四强", width: 160 },
+    { entries: bracket.quarterfinalists, label: "八强", width: 100 },
+  ];
+
+  context.strokeStyle = "#425047";
+  context.lineWidth = 2;
+  for (let levelIndex = 0; levelIndex < levels.length - 1; levelIndex += 1) {
+    const parents = levels[levelIndex].entries;
+    const children = levels[levelIndex + 1].entries;
+    const parentY = levelYs[levelIndex] + nodeHeight;
+    const childY = levelYs[levelIndex + 1];
+    const joinY = parentY + (childY - parentY) / 2;
+
+    parents.forEach((parent, parentIndex) => {
+      const parentX = x + ((parentIndex + 0.5) * width) / parents.length;
+      const firstChildX =
+        x + (((parentIndex * 2) + 0.5) * width) / children.length;
+      const secondChildX =
+        x + (((parentIndex * 2) + 1.5) * width) / children.length;
+      const championPath = parent.participant.id === bracket.championId;
+
+      context.strokeStyle = championPath ? "#c8ff47" : "#344039";
+      context.beginPath();
+      context.moveTo(parentX, parentY);
+      context.lineTo(parentX, joinY);
+      context.lineTo(firstChildX, joinY);
+      context.moveTo(parentX, joinY);
+      context.lineTo(secondChildX, joinY);
+      context.lineTo(secondChildX, childY);
+      context.moveTo(firstChildX, joinY);
+      context.lineTo(firstChildX, childY);
+      context.stroke();
+    });
+  }
+
+  levels.forEach((level, levelIndex) => {
+    level.entries.forEach((entry, entryIndex) => {
+      const centerX = x + ((entryIndex + 0.5) * width) / level.entries.length;
+      const nodeX = centerX - level.width / 2;
+      const nodeY = levelYs[levelIndex];
+      const championPath = entry.participant.id === bracket.championId;
+      roundedRect(
+        context,
+        nodeX,
+        nodeY,
+        level.width,
+        nodeHeight,
+        12,
+        championPath ? "#1d2a0e" : "#10151b",
+      );
+      context.strokeStyle = championPath ? "#7ca82e" : "#2a3530";
+      context.lineWidth = 2;
+      context.strokeRect(nodeX + 1, nodeY + 1, level.width - 2, nodeHeight - 2);
+      context.fillStyle = championPath ? "#c8ff47" : "#77827a";
+      context.font = '800 13px "Microsoft YaHei", sans-serif';
+      context.textAlign = "center";
+      context.fillText(level.label, centerX, nodeY + 20);
+      context.fillStyle = "#f5f7f3";
+      context.font = `800 ${levelIndex === 3 ? 14 : 17}px "Microsoft YaHei", sans-serif`;
+      drawCanvasText(
+        context,
+        entry.participant.name,
+        centerX,
+        nodeY + 43,
+        level.width - 14,
+        20,
+      );
+      context.fillStyle = championPath ? "#a9d83f" : "#68736b";
+      context.font = '600 11px "Microsoft YaHei", sans-serif';
+      context.fillText(
+        entry.score || `#${String(entry.participant.seed).padStart(2, "0")}`,
+        centerX,
+        nodeY + 61,
+      );
+      context.textAlign = "left";
+    });
+  });
 }
 
 function drawCanvasSectionTitle(context, text, x, y) {

@@ -111,6 +111,52 @@ export function getScoringLeaders(tournament) {
   return qualifierStats.filter((item) => item.totalNetPoints === topNetPoints);
 }
 
+export function getKnockoutBracket(tournament) {
+  if (tournament.phase !== "complete" || !tournament.knockout?.championId) {
+    return null;
+  }
+
+  const participantMap = new Map(
+    tournament.participants.map((participant) => [participant.id, participant]),
+  );
+  const roundMap = new Map(
+    tournament.knockout.rounds.map((round) => [round.stage, round]),
+  );
+  const quarterfinal = roundMap.get("quarterfinal");
+  const semifinal = roundMap.get("semifinal");
+  const finalMatch = roundMap.get("final")?.matches[0];
+
+  if (
+    quarterfinal?.matches.length !== 4 ||
+    semifinal?.matches.length !== 2 ||
+    !finalMatch
+  ) {
+    return null;
+  }
+
+  const makeEntry = (participantId, sourceMatch = null) => ({
+    participant: participantMap.get(participantId),
+    score: sourceMatch ? scoreText(sourceMatch) : "",
+  });
+
+  return {
+    championId: tournament.knockout.championId,
+    champion: makeEntry(tournament.knockout.championId, finalMatch),
+    finalists: [finalMatch.aId, finalMatch.bId].map((participantId, index) =>
+      makeEntry(participantId, semifinal.matches[index]),
+    ),
+    semifinalists: semifinal.matches
+      .flatMap((match) => [match.aId, match.bId])
+      .map((participantId, index) =>
+        makeEntry(participantId, quarterfinal.matches[index]),
+      ),
+    quarterfinalists: quarterfinal.matches.flatMap((match) => [
+      makeEntry(match.aId),
+      makeEntry(match.bId),
+    ]),
+  };
+}
+
 export function buildResultsCsv(tournament, standings) {
   const placements = getFinalPlacements(tournament, standings);
   const performance = getPerformanceStats(tournament);

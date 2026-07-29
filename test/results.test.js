@@ -12,6 +12,7 @@ import {
 import {
   buildResultsCsv,
   getFinalPlacements,
+  getKnockoutBracket,
   getPerformanceStats,
   getScoringLeaders,
 } from "../src/results.js";
@@ -127,4 +128,28 @@ test("scoring leaders are selected only from the final eight by total net points
   assert.ok(leaders.length >= 1);
   assert.ok(leaders.every((item) => qualifierIds.has(item.participant.id)));
   assert.ok(leaders.every((item) => item.totalNetPoints === maximum));
+});
+
+test("knockout bracket preserves the 8-to-4-to-2-to-1 progression", () => {
+  const tournament = completedTournament();
+  const bracket = getKnockoutBracket(tournament);
+
+  assert.ok(bracket);
+  assert.equal(bracket.quarterfinalists.length, 8);
+  assert.equal(bracket.semifinalists.length, 4);
+  assert.equal(bracket.finalists.length, 2);
+  assert.equal(bracket.champion.participant.id, tournament.knockout.championId);
+  assert.ok(bracket.champion.score);
+  assert.equal(
+    new Set(bracket.quarterfinalists.map((item) => item.participant.id)).size,
+    8,
+  );
+  assert.deepEqual(
+    bracket.semifinalists.map((item) => item.participant.id),
+    tournament.knockout.rounds[0].matches.map((match) => match.winnerId),
+  );
+  assert.deepEqual(
+    bracket.finalists.map((item) => item.participant.id),
+    tournament.knockout.rounds[1].matches.map((match) => match.winnerId),
+  );
 });

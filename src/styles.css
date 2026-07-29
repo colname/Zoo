@@ -2298,6 +2298,201 @@ summary small {
   border-top: 1px solid #273228;
 }
 
+.knockout-bracket-board {
+  margin-top: 30px;
+  padding-top: 28px;
+  border-top: 1px solid #273228;
+}
+
+.knockout-bracket-heading {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.knockout-bracket-heading h3 {
+  margin: 6px 0 0;
+  font-size: 23px;
+}
+
+.knockout-bracket-heading > small {
+  color: #6f7a72;
+  font-size: 9px;
+}
+
+.knockout-bracket-scroll {
+  padding: 18px 0 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: #40522d #10151b;
+  scrollbar-width: thin;
+}
+
+.knockout-bracket-tree {
+  min-width: 760px;
+}
+
+.knockout-bracket-level {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 66px;
+}
+
+.knockout-bracket-level:last-child {
+  margin-bottom: 0;
+}
+
+.level-champion {
+  grid-template-columns: 1fr;
+}
+
+.level-finalists {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.level-semifinalists {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.level-quarterfinalists {
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.knockout-bracket-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+}
+
+.knockout-bracket-slot::before {
+  position: absolute;
+  top: -33px;
+  left: 50%;
+  height: 33px;
+  content: "";
+  border-left: 1px solid #344039;
+}
+
+.level-champion .knockout-bracket-slot::before {
+  display: none;
+}
+
+.knockout-bracket-slot.is-champion-path::before {
+  border-color: #7ca82e;
+}
+
+.knockout-bracket-node {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: calc(100% - 14px);
+  height: 78px;
+  min-height: 78px;
+  padding: 12px 8px 10px;
+  overflow: hidden;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  background: #0a0e0c;
+  border: 1px solid #29332d;
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.2);
+}
+
+.knockout-bracket-node small,
+.knockout-bracket-node strong,
+.knockout-bracket-node span {
+  display: block;
+  max-width: 100%;
+}
+
+.knockout-bracket-node small {
+  margin-bottom: 5px;
+  color: #68736b;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.knockout-bracket-node strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.knockout-bracket-node span {
+  margin-top: 6px;
+  overflow: hidden;
+  color: #657068;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level-champion .knockout-bracket-node {
+  width: 220px;
+  height: 94px;
+  min-height: 94px;
+}
+
+.level-champion .knockout-bracket-node strong {
+  color: var(--lime);
+  font-size: 18px;
+}
+
+.level-finalists .knockout-bracket-node {
+  width: min(230px, calc(100% - 32px));
+}
+
+.level-semifinalists .knockout-bracket-node {
+  width: min(175px, calc(100% - 18px));
+}
+
+.knockout-bracket-slot.is-champion-path .knockout-bracket-node {
+  background:
+    radial-gradient(circle at 50% 0%, rgb(200 255 71 / 0.1), transparent 70%),
+    #10170f;
+  border-color: #597332;
+  box-shadow: 0 12px 34px rgb(200 255 71 / 0.07);
+}
+
+.knockout-bracket-slot.is-champion-path .knockout-bracket-node small,
+.knockout-bracket-slot.is-champion-path .knockout-bracket-node span {
+  color: #9fc63e;
+}
+
+.knockout-bracket-fork {
+  position: absolute;
+  right: 25%;
+  bottom: -34px;
+  left: 25%;
+  height: 34px;
+  border-bottom: 1px solid #344039;
+}
+
+.knockout-bracket-fork::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  content: "";
+  border-left: 1px solid #344039;
+}
+
+.knockout-bracket-slot.is-champion-path .knockout-bracket-fork,
+.knockout-bracket-slot.is-champion-path .knockout-bracket-fork::before {
+  border-color: #7ca82e;
+}
+
 .performance-heading {
   display: flex;
   gap: 20px;
@@ -2549,6 +2744,26 @@ summary small {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .knockout-bracket-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .knockout-bracket-heading > small {
+    color: #8e9991;
+  }
+
+  .knockout-bracket-scroll {
+    margin-right: -17px;
+    margin-left: -17px;
+    padding: 14px 17px 8px;
+  }
+
+  .knockout-bracket-tree {
+    min-width: 700px;
   }
 
   .performance-legend {
