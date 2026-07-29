@@ -1,14 +1,16 @@
 import {
-  DEFAULT_ROUND_FORMATS,
   createTournament,
   finalizeCurrentRound,
+  getCurrentRound,
   getStandings,
   selectWinner,
   tournamentIsComplete,
   undoLastSettlement,
+  updateGameScore,
 } from "./swiss.js";
 
-const STORAGE_KEY = "zoo-swiss-tournament-v1";
+const STORAGE_KEY = "zoo-swiss-tournament-v2";
+const QUICK_SCORES = [11, 15, 21, 25, 31];
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
 const importButton = document.querySelector("#import-button");
@@ -16,6 +18,7 @@ const importFile = document.querySelector("#import-file");
 const exportButton = document.querySelector("#export-button");
 
 let tournament = loadTournament();
+let openScoreMatchId = null;
 
 render();
 
@@ -33,23 +36,18 @@ function render() {
 }
 
 function renderSetup() {
-  const defaultNames = Array.from(
-    { length: 16 },
-    (_, index) => `参赛单位 ${index + 1}`,
-  );
-
   app.innerHTML = `
     <section class="hero">
-      <div class="eyebrow"><span></span> 16 参赛单位 · 3 胜晋级 · 3 负淘汰</div>
-      <h1>把复杂赛程，<br /><em>变成清晰的一轮。</em></h1>
+      <div class="eyebrow"><span></span> 16 参赛单位 · 完整瑞士轮 + 单败淘汰赛</div>
+      <h1>球场边也能<br /><em>单手完成录分。</em></h1>
       <p>
-        为羽毛球设计的轻量瑞士轮赛事工具。参赛单位可以是一名球员、
-        一组双打搭档，或一支团体队。
+        适用于单打、双打组合和团体赛。瑞士轮产生 8 个晋级单位，
+        再通过四分之一决赛、半决赛和决赛决出冠军。
       </p>
       <div class="hero-stats">
         <div><strong>16</strong><span>参赛单位</span></div>
-        <div><strong>5</strong><span>最多轮次</span></div>
-        <div><strong>8</strong><span>最终晋级</span></div>
+        <div><strong>5</strong><span>最多瑞士轮</span></div>
+        <div><strong>1</strong><span>最终冠军</span></div>
       </div>
     </section>
 
@@ -79,63 +77,53 @@ function renderSetup() {
           <label>
             <span>抽签种子</span>
             <input name="seed" value="${new Date().toISOString().slice(0, 10)}" required />
-            <small>相同名单与种子会得到相同首轮对阵</small>
+            <small>相同名单与种子会得到相同抽签结果</small>
           </label>
           <label>
-            <span>赛制说明</span>
-            <input value="3 胜晋级 / 3 负淘汰" disabled />
-            <small>16 人首版固定，最多进行 5 轮</small>
+            <span>赛事结构</span>
+            <input value="3 胜晋级 / 3 负淘汰 / 8 强单败" disabled />
+            <small>比分仅记录，不限制必须打到目标分</small>
           </label>
         </div>
 
-        <fieldset class="format-fieldset">
-          <legend>各轮比赛形式</legend>
-          <div class="format-grid">
-            ${DEFAULT_ROUND_FORMATS.map(
-              (format, index) => `
-                <label>
-                  <span>第 ${index + 1} 轮</span>
-                  <select name="roundFormat">
-                    <option ${format === "一局定胜负" ? "selected" : ""}>一局定胜负</option>
-                    <option ${format === "三局两胜" ? "selected" : ""}>三局两胜</option>
-                    <option>五局三胜</option>
-                  </select>
-                </label>
-              `,
-            ).join("")}
-          </div>
-        </fieldset>
+        <div class="rules-cards">
+          <article><span>普通瑞士轮</span><strong>21 分 · BO1</strong><small>一局定胜负</small></article>
+          <article><span>晋级/淘汰战</span><strong>31 分 · BO1</strong><small>生死战一局定胜负</small></article>
+          <article><span>八强淘汰赛</span><strong>15 分 · BO3</strong><small>每局 15 分，三局两胜</small></article>
+        </div>
 
         <fieldset class="entrant-fieldset">
           <legend>
             <span>参赛名单</span>
-            <small>共 16 个参赛单位</small>
+            <small>俱乐部/小组可留空；填写后首轮自动回避同组</small>
           </legend>
-          <div class="entrant-grid">
-            ${defaultNames
-              .map(
-                (name, index) => `
-                  <label class="entrant-input">
-                    <span>${String(index + 1).padStart(2, "0")}</span>
-                    <input name="entrantName" value="${name}" required />
-                  </label>
-                `,
-              )
-              .join("")}
+          <div class="entrant-grid entrant-grid-detailed">
+            ${Array.from({ length: 16 }, (_, index) => `
+              <div class="entrant-row">
+                <span class="entrant-number">${String(index + 1).padStart(2, "0")}</span>
+                <label>
+                  <span class="sr-only">参赛单位 ${index + 1}</span>
+                  <input name="entrantName" value="参赛单位 ${index + 1}" required />
+                </label>
+                <label>
+                  <span class="sr-only">俱乐部或小组 ${index + 1}</span>
+                  <input name="affiliation" placeholder="俱乐部/小组（可选）" />
+                </label>
+              </div>
+            `).join("")}
           </div>
         </fieldset>
 
-        <button class="button button-primary button-wide" type="submit">
-          生成第一轮对阵
-          <span aria-hidden="true">→</span>
+        <button class="button button-primary button-wide setup-submit" type="submit">
+          生成第一轮对阵 <span aria-hidden="true">→</span>
         </button>
       </form>
     </section>
 
     <section class="rules-strip">
-      <article><span>01</span><div><strong>首轮抽签</strong><p>16 个参赛单位随机组成 8 场比赛。</p></div></article>
-      <article><span>02</span><div><strong>同战绩配对</strong><p>后续优先在相同胜负记录内配对。</p></div></article>
-      <article><span>03</span><div><strong>避免重赛</strong><p>算法优先寻找未曾交手的对手。</p></div></article>
+      <article><span>01</span><div><strong>首轮回避</strong><p>尽量避免同俱乐部或同小组相遇。</p></div></article>
+      <article><span>02</span><div><strong>同战绩抽签</strong><p>第二轮起同战绩优先且不重复交手。</p></div></article>
+      <article><span>03</span><div><strong>八强抽签</strong><p>两支 3-0 单位分别对阵 3-2 单位。</p></div></article>
     </section>
   `;
 
@@ -148,7 +136,7 @@ function renderSetup() {
         entrantType: data.get("entrantType"),
         seed: data.get("seed"),
         names: data.getAll("entrantName"),
-        roundFormats: data.getAll("roundFormat"),
+        affiliations: data.getAll("affiliation"),
       });
       persist();
       render();
@@ -161,7 +149,7 @@ function renderSetup() {
 }
 
 function renderTournament() {
-  const currentRound = tournament.rounds.at(-1);
+  const currentRound = getCurrentRound(tournament);
   const complete = tournamentIsComplete(tournament);
   const standings = getStandings(tournament);
   const participantMap = new Map(
@@ -173,6 +161,10 @@ function renderTournament() {
   const eliminatedCount = tournament.participants.filter(
     (participant) => participant.status === "eliminated",
   ).length;
+  const completedMatchCount = allRounds(tournament).reduce(
+    (sum, round) => sum + round.matches.filter((match) => match.winnerId).length,
+    0,
+  );
 
   app.innerHTML = `
     <section class="event-shell">
@@ -183,105 +175,95 @@ function renderTournament() {
           <p>抽签种子：${escapeHtml(tournament.seed)}</p>
         </div>
         <button class="button button-danger-ghost" id="reset-button" type="button">
-          结束并新建赛事
+          新建赛事
         </button>
       </div>
 
+      ${renderPhaseTrack()}
+
       <div class="summary-grid">
         <article class="summary-card">
-          <span>当前进度</span>
-          <strong>${complete ? "已完成" : `第 ${currentRound.number} 轮`}</strong>
-          <small>${complete ? "全部 16 个参赛单位已有结果" : currentRound.format}</small>
+          <span>当前阶段</span>
+          <strong>${complete ? "已完赛" : escapeHtml(currentRound.name)}</strong>
+          <small>${complete ? "冠军已经产生" : roundRuleSummary(currentRound)}</small>
         </article>
         <article class="summary-card summary-green">
-          <span>已晋级</span>
+          <span>已晋级八强</span>
           <strong>${qualifiedCount}<i>/ 8</i></strong>
-          <small>达到 3 胜</small>
+          <small>瑞士轮达到 3 胜</small>
         </article>
         <article class="summary-card summary-red">
-          <span>已淘汰</span>
+          <span>瑞士轮淘汰</span>
           <strong>${eliminatedCount}<i>/ 8</i></strong>
-          <small>达到 3 负</small>
+          <small>瑞士轮达到 3 负</small>
         </article>
         <article class="summary-card">
-          <span>进行中</span>
-          <strong>${16 - qualifiedCount - eliminatedCount}</strong>
-          <small>仍在瑞士轮中的单位</small>
+          <span>已录结果</span>
+          <strong>${completedMatchCount}</strong>
+          <small>比分可选，胜者必选</small>
         </article>
       </div>
 
-      ${complete ? renderCompletion(standings) : renderCurrentRound(currentRound, participantMap)}
+      ${
+        complete
+          ? renderCompletion(participantMap)
+          : renderCurrentRound(currentRound, participantMap)
+      }
 
-      <section class="standings-section">
-        <div class="section-heading">
-          <div>
-            <span class="step">实时榜单</span>
-            <h2>参赛单位排名</h2>
-          </div>
-          <span class="pill">同战绩按对手胜场排序</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>排名</th>
-                <th>参赛单位</th>
-                <th>战绩</th>
-                <th>对手分</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${standings
-                .map(
-                  (participant, index) => `
-                    <tr>
-                      <td><span class="rank">${index + 1}</span></td>
-                      <td><strong>${escapeHtml(participant.name)}</strong><small>#${participant.seed}</small></td>
-                      <td><span class="record">${participant.wins} - ${participant.losses}</span></td>
-                      <td>${participant.buchholz}</td>
-                      <td>${statusBadge(participant.status)}</td>
-                    </tr>
-                  `,
-                )
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="history-section">
-        <div class="section-heading">
-          <div>
-            <span class="step">赛事记录</span>
-            <h2>轮次历史</h2>
-          </div>
-        </div>
-        <div class="history-list">
-          ${tournament.rounds
-            .map((round) => renderHistoryRound(round, participantMap))
-            .join("")}
-        </div>
-      </section>
+      ${renderStandings(standings)}
+      ${renderHistory(participantMap)}
     </section>
+
+    <nav class="mobile-nav" aria-label="赛事快捷导航">
+      <button type="button" data-scroll-to="#current-stage"><span>●</span>录分</button>
+      <button type="button" data-scroll-to="#standings"><span>≡</span>排名</button>
+      <button type="button" data-scroll-to="#history"><span>↺</span>赛程</button>
+      <button type="button" data-export-mobile><span>⇩</span>存档</button>
+    </nav>
   `;
 
   bindTournamentActions(currentRound, complete);
 }
 
+function renderPhaseTrack() {
+  const phaseIndex =
+    tournament.phase === "swiss"
+      ? 0
+      : tournament.phase === "knockout"
+        ? (tournament.knockout?.rounds.length || 1)
+        : 4;
+  const phases = ["瑞士轮", "八强", "半决赛", "决赛"];
+  return `
+    <div class="phase-track">
+      ${phases
+        .map(
+          (phase, index) => `
+            <div class="${index <= phaseIndex ? "reached" : ""} ${index === phaseIndex ? "current" : ""}">
+              <span>${index + 1}</span><small>${phase}</small>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderCurrentRound(round, participantMap) {
   const completedMatches = round.matches.filter((match) => match.winnerId).length;
   const canFinalize = completedMatches === round.matches.length;
-
   return `
-    <section class="round-section">
+    <section class="round-section" id="current-stage">
       <div class="round-heading">
         <div>
-          <span class="round-kicker">ROUND ${String(round.number).padStart(2, "0")}</span>
-          <h2>第 ${round.number} 轮对阵</h2>
-          <p>${escapeHtml(round.format)} · 已录入 ${completedMatches}/${round.matches.length} 场</p>
+          <span class="round-kicker">${round.type === "swiss" ? `SWISS ${String(round.number).padStart(2, "0")}` : "KNOCKOUT"}</span>
+          <h2>${escapeHtml(round.name)}</h2>
+          <p>已选胜者 ${completedMatches}/${round.matches.length} 场 · 比分不限制目标分</p>
         </div>
-        <div class="round-records">${recordPoolLabels(round, participantMap)}</div>
+        ${
+          round.type === "swiss"
+            ? `<div class="round-records">${recordPoolLabels(round, participantMap)}</div>`
+            : `<span class="knockout-badge">15 分 BO3</span>`
+        }
       </div>
 
       ${
@@ -291,21 +273,19 @@ function renderCurrentRound(round, participantMap) {
       }
 
       <div class="matches-grid">
-        ${round.matches
-          .map((match) => renderMatch(match, participantMap))
-          .join("")}
+        ${round.matches.map((match) => renderMatch(match, participantMap)).join("")}
       </div>
 
       <div class="round-actions">
         ${
-          tournament.rounds.length > 1
-            ? `<button class="button button-ghost" id="undo-button" type="button">撤回上一轮结算</button>`
+          canUndo()
+            ? `<button class="button button-ghost" id="undo-button" type="button">撤回上一轮</button>`
             : "<span></span>"
         }
         <button class="button button-primary" id="finalize-button" type="button" ${
           canFinalize ? "" : "disabled"
         }>
-          ${canFinalize ? "确认结果并生成下一轮" : `还需录入 ${round.matches.length - completedMatches} 场`}
+          ${canFinalize ? finalizeButtonLabel(round) : `还需选择 ${round.matches.length - completedMatches} 场胜者`}
           <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -316,68 +296,165 @@ function renderCurrentRound(round, participantMap) {
 function renderMatch(match, participantMap) {
   const a = participantMap.get(match.aId);
   const b = participantMap.get(match.bId);
+  const isOpen = openScoreMatchId === match.id;
   return `
     <article class="match-card ${match.winnerId ? "has-result" : ""}">
       <div class="match-meta">
         <span>场地 ${String(match.court).padStart(2, "0")}</span>
-        <span>${a.wins}-${a.losses} 战绩池</span>
+        <strong>${escapeHtml(match.format)}</strong>
       </div>
-      <button
-        class="competitor ${match.winnerId === a.id ? "winner" : ""}"
-        type="button"
-        data-match-id="${match.id}"
-        data-winner-id="${a.id}"
-      >
+      <button class="competitor ${match.winnerId === a.id ? "winner" : ""}" type="button"
+        data-match-id="${match.id}" data-winner-id="${a.id}">
         <span class="seed">${String(a.seed).padStart(2, "0")}</span>
-        <strong>${escapeHtml(a.name)}</strong>
-        <span class="choose">${match.winnerId === a.id ? "胜者 ✓" : "选择胜者"}</span>
+        <span class="competitor-name"><strong>${escapeHtml(a.name)}</strong>${a.affiliation ? `<small>${escapeHtml(a.affiliation)}</small>` : ""}</span>
+        <span class="choose">${match.winnerId === a.id ? "胜者 ✓" : "选为胜者"}</span>
       </button>
       <div class="versus"><span></span>VS<span></span></div>
-      <button
-        class="competitor ${match.winnerId === b.id ? "winner" : ""}"
-        type="button"
-        data-match-id="${match.id}"
-        data-winner-id="${b.id}"
-      >
+      <button class="competitor ${match.winnerId === b.id ? "winner" : ""}" type="button"
+        data-match-id="${match.id}" data-winner-id="${b.id}">
         <span class="seed">${String(b.seed).padStart(2, "0")}</span>
-        <strong>${escapeHtml(b.name)}</strong>
-        <span class="choose">${match.winnerId === b.id ? "胜者 ✓" : "选择胜者"}</span>
+        <span class="competitor-name"><strong>${escapeHtml(b.name)}</strong>${b.affiliation ? `<small>${escapeHtml(b.affiliation)}</small>` : ""}</span>
+        <span class="choose">${match.winnerId === b.id ? "胜者 ✓" : "选为胜者"}</span>
       </button>
+      <button class="score-toggle" type="button" data-toggle-score="${match.id}">
+        <span>${scoreSummary(match)}</span>
+        <strong>${isOpen ? "收起比分" : "录入比分"}</strong>
+      </button>
+      ${isOpen ? renderScoreEditor(match, a, b) : ""}
     </article>
   `;
 }
 
-function renderCompletion(standings) {
-  const qualifiers = standings.filter(
-    (participant) => participant.status === "qualified",
-  );
+function renderScoreEditor(match, a, b) {
   return `
-    <section class="completion">
-      <div class="completion-copy">
-        <span class="step">TOURNAMENT COMPLETE</span>
-        <h2>瑞士轮全部结束</h2>
-        <p>8 个参赛单位完成晋级。你可以导出赛事存档，保留完整对阵与结果。</p>
+    <div class="score-editor">
+      <div class="score-editor-note">
+        建议 ${match.targetPoints} 分，任意比分均可结算
       </div>
-      <div class="qualifier-grid">
-        ${qualifiers
-          .map(
-            (participant, index) => `
-              <div><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(participant.name)}</strong><small>${participant.wins}-${participant.losses}</small></div>
-            `,
-          )
+      ${match.games
+        .map(
+          (game, gameIndex) => `
+            <section class="game-score">
+              <h4>${match.bestOf === 1 ? "本场比分" : `第 ${gameIndex + 1} 局`}</h4>
+              <div class="score-sides">
+                ${renderScoreSide(match, game, gameIndex, "a", a)}
+                <span class="score-divider">:</span>
+                ${renderScoreSide(match, game, gameIndex, "b", b)}
+              </div>
+            </section>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderScoreSide(match, game, gameIndex, side, participant) {
+  return `
+    <div class="score-side">
+      <strong>${escapeHtml(participant.name)}</strong>
+      <div class="score-stepper">
+        <button type="button" aria-label="${escapeHtml(participant.name)}减一分"
+          data-score-action data-match="${match.id}" data-game="${gameIndex}" data-side="${side}" data-delta="-1">−</button>
+        <input type="number" min="0" inputmode="numeric" value="${game[side]}"
+          aria-label="${escapeHtml(participant.name)}比分"
+          data-score-input data-match="${match.id}" data-game="${gameIndex}" data-side="${side}" />
+        <button type="button" aria-label="${escapeHtml(participant.name)}加一分"
+          data-score-action data-match="${match.id}" data-game="${gameIndex}" data-side="${side}" data-delta="1">+</button>
+      </div>
+      <div class="quick-scores">
+        ${QUICK_SCORES.map(
+          (score) => `
+            <button type="button" class="${game[side] === score ? "selected" : ""}"
+              data-score-preset data-match="${match.id}" data-game="${gameIndex}" data-side="${side}" data-value="${score}">
+              ${score}
+            </button>
+          `,
+        ).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderCompletion(participantMap) {
+  const champion = participantMap.get(tournament.knockout.championId);
+  return `
+    <section class="completion" id="current-stage">
+      <div class="champion-mark">冠军</div>
+      <span class="step">TOURNAMENT COMPLETE</span>
+      <h2>${escapeHtml(champion.name)}</h2>
+      ${champion.affiliation ? `<p>${escapeHtml(champion.affiliation)}</p>` : ""}
+      <p>瑞士轮与三轮单败淘汰赛已经全部结束。</p>
+      <button class="button button-primary" id="completion-export" type="button">导出最终赛事存档</button>
+    </section>
+  `;
+}
+
+function renderStandings(standings) {
+  const rows = standings
+    .map(
+      (participant, index) => `
+        <tr>
+          <td><span class="rank">${index + 1}</span></td>
+          <td><strong>${escapeHtml(participant.name)}</strong>${participant.affiliation ? `<small>${escapeHtml(participant.affiliation)}</small>` : ""}</td>
+          <td><span class="record">${participant.wins} - ${participant.losses}</span></td>
+          <td>${participant.buchholz}</td>
+          <td>${statusBadge(participant.status)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  const cards = standings
+    .map(
+      (participant, index) => `
+        <article>
+          <span class="rank">${index + 1}</span>
+          <div><strong>${escapeHtml(participant.name)}</strong><small>${participant.affiliation ? escapeHtml(participant.affiliation) : `初始顺位 #${participant.seed}`}</small></div>
+          <b>${participant.wins}-${participant.losses}</b>
+          ${statusBadge(participant.status)}
+        </article>
+      `,
+    )
+    .join("");
+
+  return `
+    <section class="standings-section" id="standings">
+      <div class="section-heading">
+        <div><span class="step">瑞士轮榜单</span><h2>参赛单位排名</h2></div>
+        <span class="pill">同战绩按对手胜场排序</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>排名</th><th>参赛单位</th><th>战绩</th><th>对手分</th><th>状态</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="standings-cards">${cards}</div>
+    </section>
+  `;
+}
+
+function renderHistory(participantMap) {
+  return `
+    <section class="history-section" id="history">
+      <div class="section-heading">
+        <div><span class="step">赛事记录</span><h2>完整赛程</h2></div>
+      </div>
+      <div class="history-list">
+        ${allRounds(tournament)
+          .map((round) => renderHistoryRound(round, participantMap))
           .join("")}
       </div>
-      <button class="button button-primary" id="completion-export" type="button">导出最终赛事存档</button>
     </section>
   `;
 }
 
 function renderHistoryRound(round, participantMap) {
   return `
-    <details ${round === tournament.rounds.at(-1) ? "open" : ""}>
+    <details ${round === getCurrentRound(tournament) ? "open" : ""}>
       <summary>
-        <span>第 ${round.number} 轮</span>
-        <strong>${escapeHtml(round.format)}</strong>
+        <span>${escapeHtml(round.name)}</span>
+        <strong>${roundRuleSummary(round)}</strong>
         <small>${round.finalized ? "已结算" : "进行中"}</small>
       </summary>
       <div class="history-matches">
@@ -388,7 +465,7 @@ function renderHistoryRound(round, participantMap) {
             return `
               <div>
                 <span class="${match.winnerId === a.id ? "history-winner" : ""}">${escapeHtml(a.name)}</span>
-                <b>VS</b>
+                <b>${scoreSummary(match, true)}</b>
                 <span class="${match.winnerId === b.id ? "history-winner" : ""}">${escapeHtml(b.name)}</span>
               </div>
             `;
@@ -403,11 +480,7 @@ function bindTournamentActions(currentRound, complete) {
   document.querySelectorAll("[data-match-id]").forEach((button) => {
     button.addEventListener("click", () => {
       try {
-        selectWinner(
-          tournament,
-          button.dataset.matchId,
-          button.dataset.winnerId,
-        );
+        selectWinner(tournament, button.dataset.matchId, button.dataset.winnerId);
         persist();
         render();
       } catch (error) {
@@ -416,26 +489,74 @@ function bindTournamentActions(currentRound, complete) {
     });
   });
 
+  document.querySelectorAll("[data-toggle-score]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openScoreMatchId =
+        openScoreMatchId === button.dataset.toggleScore
+          ? null
+          : button.dataset.toggleScore;
+      render();
+      if (openScoreMatchId) {
+        document
+          .querySelector(`[data-toggle-score="${openScoreMatchId}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-score-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const match = currentRound.matches.find(
+        (item) => item.id === button.dataset.match,
+      );
+      const gameIndex = Number(button.dataset.game);
+      const currentValue = match.games[gameIndex][button.dataset.side];
+      setScoreFromControl(
+        button,
+        currentValue + Number(button.dataset.delta),
+      );
+    });
+  });
+
+  document.querySelectorAll("[data-score-preset]").forEach((button) => {
+    button.addEventListener("click", () =>
+      setScoreFromControl(button, Number(button.dataset.value)),
+    );
+  });
+
+  document.querySelectorAll("[data-score-input]").forEach((input) => {
+    input.addEventListener("change", () =>
+      setScoreFromControl(input, input.value),
+    );
+  });
+
   document.querySelector("#finalize-button")?.addEventListener("click", () => {
     try {
+      const oldPhase = tournament.phase;
       finalizeCurrentRound(tournament);
+      openScoreMatchId = null;
       persist();
       render();
       showToast(
         tournamentIsComplete(tournament)
-          ? "赛事已完成，8 个参赛单位晋级"
-          : `第 ${currentRound.number} 轮已结算`,
+          ? "赛事完成，冠军已经产生"
+          : oldPhase !== tournament.phase
+            ? "瑞士轮结束，八强对阵已生成"
+            : `${currentRound.name}已结算`,
       );
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      document
+        .querySelector("#current-stage")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       showToast(error.message, true);
     }
   });
 
   document.querySelector("#undo-button")?.addEventListener("click", () => {
-    if (!window.confirm("撤回后可修改上一轮胜者，确定继续吗？")) return;
+    if (!window.confirm("撤回后可修改上一轮胜者和比分，确定继续吗？")) return;
     try {
       undoLastSettlement(tournament);
+      openScoreMatchId = null;
       persist();
       render();
       showToast("已撤回上一轮结算");
@@ -445,20 +566,73 @@ function bindTournamentActions(currentRound, complete) {
   });
 
   document.querySelector("#reset-button").addEventListener("click", () => {
-    if (!window.confirm("当前赛事将从本机移除。建议先导出存档，确定继续吗？")) {
-      return;
-    }
+    if (!window.confirm("建议先导出存档。确定移除当前赛事并新建吗？")) return;
     tournament = null;
+    openScoreMatchId = null;
     localStorage.removeItem(STORAGE_KEY);
     render();
     showToast("已创建新的空白赛事");
   });
 
-  if (complete) {
-    document
-      .querySelector("#completion-export")
-      ?.addEventListener("click", exportTournament);
+  document.querySelector("#completion-export")?.addEventListener("click", exportTournament);
+  document.querySelector("[data-export-mobile]")?.addEventListener("click", exportTournament);
+  document.querySelectorAll("[data-scroll-to]").forEach((button) => {
+    button.addEventListener("click", () =>
+      document
+        .querySelector(button.dataset.scrollTo)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  });
+}
+
+function setScoreFromControl(control, value) {
+  try {
+    updateGameScore(
+      tournament,
+      control.dataset.match,
+      Number(control.dataset.game),
+      control.dataset.side,
+      value,
+    );
+    persist();
+    render();
+  } catch (error) {
+    showToast(error.message, true);
   }
+}
+
+function scoreSummary(match, compact = false) {
+  const playedGames = match.games.filter((game) => game.a !== 0 || game.b !== 0);
+  if (playedGames.length === 0) return compact ? "VS" : "尚未录入比分";
+  if (match.bestOf === 1) return `${playedGames[0].a}–${playedGames[0].b}`;
+  return playedGames
+    .map((game, index) => `${compact ? "" : `第${index + 1}局 `}${game.a}–${game.b}`)
+    .join(compact ? " / " : " · ");
+}
+
+function roundRuleSummary(round) {
+  const formats = [...new Set(round.matches.map((match) => match.format))];
+  return formats.join(" / ");
+}
+
+function finalizeButtonLabel(round) {
+  if (round.stage === "final") return "确认结果并产生冠军";
+  if (round.stage === "semifinal") return "确认结果并生成决赛";
+  if (round.stage === "quarterfinal") return "确认结果并生成半决赛";
+  if (round.number === 5) return "确认结果并生成八强对阵";
+  return "确认结果并生成下一轮";
+}
+
+function canUndo() {
+  return (
+    tournament.rounds.length > 1 ||
+    tournament.phase !== "swiss" ||
+    (tournament.rounds.at(-1)?.finalized ?? false)
+  );
+}
+
+function allRounds(value) {
+  return [...value.rounds, ...(value.knockout?.rounds || [])];
 }
 
 function recordPoolLabels(round, participantMap) {
@@ -491,7 +665,10 @@ function persist() {
 function loadTournament() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    if (parsed.version !== 2) throw new Error("Old data");
+    return parsed;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
     return null;
@@ -501,7 +678,6 @@ function loadTournament() {
 async function importTournament() {
   const [file] = importFile.files;
   if (!file) return;
-
   try {
     const imported = JSON.parse(await file.text());
     validateImport(imported);
@@ -518,19 +694,20 @@ async function importTournament() {
 
 function validateImport(imported) {
   if (
-    imported?.version !== 1 ||
+    imported?.version !== 2 ||
     !Array.isArray(imported.participants) ||
     imported.participants.length !== 16 ||
     !Array.isArray(imported.rounds)
   ) {
-    throw new Error("不是有效的 Zoo 赛事存档");
+    throw new Error("不是有效的 Zoo v2 赛事存档");
   }
 }
 
 function exportTournament() {
   if (!tournament) return;
-  const body = JSON.stringify(tournament, null, 2);
-  const blob = new Blob([body], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(tournament, null, 2)], {
+    type: "application/json",
+  });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
