@@ -87,10 +87,8 @@ button {
 
 .brand-logo {
   display: block;
-  width: 184px;
+  width: 226px;
   height: auto;
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 10px;
 }
 
 .header-actions {
@@ -908,12 +906,15 @@ summary small {
   }
 
   .brand-logo {
-    width: 126px;
-    border-radius: 8px;
+    width: 158px;
   }
 
   .header-actions {
     gap: 5px;
+  }
+
+  .header-actions .button {
+    padding: 0 9px;
   }
 
   .button {
