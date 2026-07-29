@@ -85,35 +85,12 @@ button {
   text-decoration: none;
 }
 
-.brand-mark {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  color: #0c1107;
-  font-size: 24px;
-  font-weight: 950;
-  background: var(--lime);
-  border-radius: 14px 6px 14px 6px;
-  transform: rotate(-4deg);
-}
-
-.brand strong,
-.brand small {
+.brand-logo {
   display: block;
-}
-
-.brand strong {
-  font-size: 19px;
-  letter-spacing: 0.02em;
-}
-
-.brand small {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  width: 184px;
+  height: auto;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 10px;
 }
 
 .header-actions {
@@ -930,8 +907,9 @@ summary small {
     padding: 16px 0;
   }
 
-  .brand small {
-    display: none;
+  .brand-logo {
+    width: 126px;
+    border-radius: 8px;
   }
 
   .header-actions {
