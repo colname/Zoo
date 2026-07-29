@@ -5,6 +5,7 @@ import {
   createTournament,
   finalizeCurrentRound,
   getCurrentRound,
+  getStandings,
   selectWinner,
   tournamentIsComplete,
   undoLastSettlement,
@@ -102,6 +103,30 @@ test("accepts arbitrary scores and only requires a selected winner to settle", (
 
   assert.doesNotThrow(() => finalizeCurrentRound(tournament));
   assert.deepEqual(tournament.rounds[0].matches[0].games[0], { a: 7, b: 4 });
+});
+
+test("uses point differential instead of opponent score for Swiss standings", () => {
+  const tournament = makeTournament();
+  const round = getCurrentRound(tournament);
+  const firstMatch = round.matches[0];
+
+  updateGameScore(tournament, firstMatch.id, 0, "a", 21);
+  updateGameScore(tournament, firstMatch.id, 0, "b", 16);
+  for (const match of round.matches) {
+    selectWinner(tournament, match.id, match.aId);
+  }
+  finalizeCurrentRound(tournament);
+
+  const standings = getStandings(tournament);
+  assert.equal(
+    standings.find((participant) => participant.id === firstMatch.aId).netPoints,
+    5,
+  );
+  assert.equal(
+    standings.find((participant) => participant.id === firstMatch.bId).netPoints,
+    -5,
+  );
+  assert.equal(standings[0].id, firstMatch.aId);
 });
 
 test("Swiss completion creates eight quarterfinalists with protected 3-0 draws", () => {

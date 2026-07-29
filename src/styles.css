@@ -2161,3 +2161,330 @@ summary small {
     font-size: 24px;
   }
 }
+
+/* Zoo v3: performance records, net points and final honors */
+.champion-records {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  max-width: 620px;
+  margin: 24px auto 0;
+  overflow: hidden;
+  background: rgb(5 8 7 / 0.46);
+  border: 1px solid #304024;
+  border-radius: 14px;
+}
+
+.champion-records > span {
+  padding: 13px 9px;
+  border-right: 1px solid #293520;
+}
+
+.champion-records > span:last-child {
+  border-right: 0;
+}
+
+.champion-records small,
+.champion-records strong {
+  display: block;
+}
+
+.champion-records small {
+  margin-bottom: 5px;
+  color: #748078;
+  font-size: 8px;
+}
+
+.champion-records strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.champion-records > span:last-child strong {
+  color: var(--lime);
+}
+
+.honor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.honor-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 190px;
+  padding: 20px;
+  overflow: hidden;
+  flex-direction: column;
+  background: #090d0f;
+  border: 1px solid #263029;
+  border-radius: 16px;
+}
+
+.honor-card::after {
+  position: absolute;
+  right: -30px;
+  bottom: -55px;
+  width: 120px;
+  height: 120px;
+  content: "";
+  border: 1px solid rgb(255 255 255 / 0.035);
+  border-radius: 50%;
+}
+
+.honor-champion,
+.honor-scorer {
+  background: linear-gradient(145deg, rgb(200 255 71 / 0.1), #090d0f 62%);
+  border-color: #42552e;
+}
+
+.honor-rank {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 25px;
+  place-items: center;
+  color: #111607;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 900;
+  background: var(--lime);
+  border-radius: 12px 5px;
+}
+
+.honor-card:not(.honor-champion, .honor-scorer) .honor-rank {
+  color: #cdd4ce;
+  background: #28312c;
+}
+
+.honor-card > small {
+  margin-bottom: 7px;
+  color: #78837b;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.honor-card > strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.honor-card > b {
+  margin-top: auto;
+  padding-top: 16px;
+  color: #7b867e;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.honor-scorer > b {
+  color: var(--lime);
+}
+
+.honor-names {
+  display: grid;
+  gap: 5px;
+}
+
+.honor-names span {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-board {
+  margin-top: 30px;
+  padding-top: 28px;
+  border-top: 1px solid #273228;
+}
+
+.performance-heading {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.performance-heading h3 {
+  margin: 6px 0 0;
+  font-size: 23px;
+}
+
+.performance-legend {
+  display: flex;
+  gap: 10px;
+  color: #6f7a72;
+  font-size: 8px;
+}
+
+.performance-table {
+  display: grid;
+  gap: 6px;
+}
+
+.performance-table article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(76px, 0.55fr));
+  gap: 8px;
+  align-items: center;
+  min-height: 62px;
+  padding: 10px 14px;
+  background: #090d0f;
+  border: 1px solid #202a24;
+  border-radius: 11px;
+}
+
+.performance-table article.is-scoring-leader {
+  background: linear-gradient(90deg, rgb(200 255 71 / 0.08), #090d0f 48%);
+  border-color: #40522d;
+}
+
+.performance-name {
+  min-width: 0;
+}
+
+.performance-name strong,
+.performance-name small,
+.performance-table article > span small,
+.performance-table article > span b {
+  display: block;
+}
+
+.performance-name strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-name small {
+  margin-top: 4px;
+  color: #748078;
+  font-size: 8px;
+}
+
+.performance-table article > span {
+  text-align: center;
+}
+
+.performance-table article > span small {
+  margin-bottom: 4px;
+  color: #68736b;
+  font-size: 7px;
+}
+
+.performance-table article > span b {
+  font-size: 12px;
+}
+
+.performance-table .net-stat b,
+.net-points {
+  color: var(--lime);
+  font-weight: 800;
+}
+
+.net-points {
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .honor-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .champion-records {
+    grid-template-columns: repeat(2, 1fr);
+    margin-top: 20px;
+  }
+
+  .champion-records > span:nth-child(2) {
+    border-right: 0;
+  }
+
+  .champion-records > span:nth-child(-n + 2) {
+    border-bottom: 1px solid #293520;
+  }
+
+  .honor-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 7px;
+  }
+
+  .honor-card {
+    min-height: 170px;
+    padding: 15px;
+  }
+
+  .honor-rank {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 20px;
+    font-size: 17px;
+  }
+
+  .honor-card > strong {
+    font-size: 13px;
+  }
+
+  .performance-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .performance-legend {
+    flex-wrap: wrap;
+  }
+
+  .performance-table article {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 9px 4px;
+    padding: 12px;
+  }
+
+  .performance-name {
+    grid-column: 1 / -1;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #202a24;
+  }
+
+  .standings-cards article {
+    grid-template-columns: 32px 1fr auto auto;
+  }
+
+  .standings-cards article > .rank {
+    grid-row: 1 / span 2;
+    grid-column: 1;
+  }
+
+  .standings-cards article > div {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .standings-cards article > b {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .standings-cards article .net-points {
+    grid-row: 2;
+    grid-column: 2 / span 2;
+    font-size: 9px;
+  }
+
+  .standings-cards article .status {
+    grid-row: 1 / span 2;
+    grid-column: 4;
+  }
+}

@@ -11,7 +11,11 @@ import {
 import {
   buildResultsCsv,
   getFinalPlacements,
+  getPerformanceStats,
+  getScoringLeaders,
+  recordText,
   scoreText,
+  signedNumber,
 } from "./results.js";
 
 const STORAGE_KEY = "zoo-swiss-tournament-v2";
@@ -396,9 +400,21 @@ function renderCompletion(participantMap) {
   const champion = participantMap.get(tournament.knockout.championId);
   const standings = getStandings(tournament);
   const placements = getFinalPlacements(tournament, standings);
+  const performance = getPerformanceStats(tournament);
+  const performanceMap = new Map(
+    performance.map((item) => [item.participant.id, item]),
+  );
+  const championStats = performanceMap.get(champion.id);
   const runnerUp = placements.find((placement) => placement.rank === 2)?.participant;
+  const runnerUpStats = performanceMap.get(runnerUp?.id);
   const semifinalists = placements.filter((placement) => placement.rank === 3);
-  const quarterfinalists = placements.filter((placement) => placement.rank === 5);
+  const scoringLeaders = getScoringLeaders(tournament);
+  const topEight = placements
+    .filter((placement) => placement.rank <= 5)
+    .map((placement) => ({
+      ...placement,
+      stats: performanceMap.get(placement.participant.id),
+    }));
   const finalRound = tournament.knockout.rounds.find(
     (round) => round.stage === "final",
   );
@@ -420,6 +436,12 @@ function renderCompletion(participantMap) {
         <span class="champion-label">CHAMPION · 冠军</span>
         <h2>${escapeHtml(champion.name)}</h2>
         ${champion.affiliation ? `<p class="champion-affiliation">${escapeHtml(champion.affiliation)}</p>` : ""}
+        <div class="champion-records" aria-label="冠军战绩">
+          <span><small>瑞士轮</small><strong>${recordText(championStats.swissWins, championStats.swissLosses)}</strong></span>
+          <span><small>淘汰赛</small><strong>${recordText(championStats.knockoutWins, championStats.knockoutLosses)}</strong></span>
+          <span><small>总战绩</small><strong>${recordText(championStats.totalWins, championStats.totalLosses)}</strong></span>
+          <span><small>总净胜分</small><strong>${signedNumber(championStats.totalNetPoints)}</strong></span>
+        </div>
 
         <div class="final-result">
           <div class="finalist winner">
@@ -450,27 +472,28 @@ function renderCompletion(participantMap) {
       <div class="final-placements">
         <div class="final-placements-heading">
           <div>
-            <span class="step">FINAL PLACEMENTS</span>
-            <h3>最终名次</h3>
+            <span class="step">FINAL HONORS</span>
+            <h3>最终荣誉</h3>
           </div>
-          <small>本赛事未设置季军赛，因此两位半决赛负者并列季军</small>
+          <small>得分王仅在八强中产生，按整届赛事累计总净胜分计算</small>
         </div>
-        <div class="podium-grid">
-          <article class="podium-card podium-first">
-            <span class="podium-rank">1</span>
-            <div><small>冠军</small><strong>${escapeHtml(champion.name)}</strong></div>
-            <b>WINNER</b>
+        <div class="honor-grid">
+          <article class="honor-card honor-champion">
+            <span class="honor-rank">1</span>
+            <small>冠军</small>
+            <strong>${escapeHtml(champion.name)}</strong>
+            <b>总战绩 ${recordText(championStats.totalWins, championStats.totalLosses)}</b>
           </article>
-          <article class="podium-card podium-second">
-            <span class="podium-rank">2</span>
-            <div><small>亚军</small><strong>${escapeHtml(runnerUp?.name || "—")}</strong></div>
-            <b>FINALIST</b>
+          <article class="honor-card">
+            <span class="honor-rank">2</span>
+            <small>亚军</small>
+            <strong>${escapeHtml(runnerUp?.name || "—")}</strong>
+            <b>总战绩 ${recordText(runnerUpStats.totalWins, runnerUpStats.totalLosses)}</b>
           </article>
-        </div>
-        <div class="placement-groups">
-          <article>
-            <div class="placement-title"><span>3</span><strong>并列季军</strong></div>
-            <div class="placement-names">
+          <article class="honor-card">
+            <span class="honor-rank">3</span>
+            <small>季军（并列）</small>
+            <div class="honor-names">
               ${semifinalists
                 .map(
                   (placement) =>
@@ -478,18 +501,48 @@ function renderCompletion(participantMap) {
                 )
                 .join("")}
             </div>
+            <b>无季军赛</b>
           </article>
-          <article>
-            <div class="placement-title"><span>5</span><strong>八强</strong></div>
-            <div class="placement-names">
-              ${quarterfinalists
+          <article class="honor-card honor-scorer">
+            <span class="honor-rank">+</span>
+            <small>得分王</small>
+            <div class="honor-names">
+              ${scoringLeaders
                 .map(
-                  (placement) =>
-                    `<span>${escapeHtml(placement.participant.name)}</span>`,
+                  (item) =>
+                    `<span>${escapeHtml(item.participant.name)}</span>`,
                 )
                 .join("")}
             </div>
+            <b>总净胜分 ${signedNumber(scoringLeaders[0]?.totalNetPoints || 0)}</b>
           </article>
+        </div>
+
+        <div class="performance-board">
+          <div class="performance-heading">
+            <div><span class="step">TOP 8 PERFORMANCE</span><h3>八强战绩总览</h3></div>
+            <div class="performance-legend">
+              <span>瑞：瑞士轮</span><span>淘：淘汰赛</span><span>总：全部比赛</span>
+            </div>
+          </div>
+          <div class="performance-table">
+            ${topEight
+              .map(
+                ({ participant, label, stats }) => `
+                  <article class="${scoringLeaders.some((item) => item.participant.id === participant.id) ? "is-scoring-leader" : ""}">
+                    <div class="performance-name">
+                      <strong>${escapeHtml(participant.name)}</strong>
+                      <small>${escapeHtml(label)}${scoringLeaders.some((item) => item.participant.id === participant.id) ? " · 得分王" : ""}</small>
+                    </div>
+                    <span><small>瑞士轮</small><b>${recordText(stats.swissWins, stats.swissLosses)}</b></span>
+                    <span><small>淘汰赛</small><b>${recordText(stats.knockoutWins, stats.knockoutLosses)}</b></span>
+                    <span><small>总战绩</small><b>${recordText(stats.totalWins, stats.totalLosses)}</b></span>
+                    <span class="net-stat"><small>净胜分</small><b>${signedNumber(stats.totalNetPoints)}</b></span>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
         </div>
       </div>
     </section>
@@ -525,7 +578,7 @@ function renderExportMenu(complete) {
         </div>
         ${
           complete
-            ? `<div class="export-ready"><span>✓</span> 已包含冠军、最终名次和完整赛果</div>`
+            ? `<div class="export-ready"><span>✓</span> 已包含四项荣誉、三类战绩、净胜分和完整赛果</div>`
             : `<div class="export-ready export-ready-progress"><span>!</span> 赛事尚未结束，将导出当前进度</div>`
         }
         <button class="archive-export" type="button" data-export-format="archive">
@@ -544,7 +597,7 @@ function renderStandings(standings) {
           <td><span class="rank">${index + 1}</span></td>
           <td><strong>${escapeHtml(participant.name)}</strong>${participant.affiliation ? `<small>${escapeHtml(participant.affiliation)}</small>` : ""}</td>
           <td><span class="record">${participant.wins} - ${participant.losses}</span></td>
-          <td>${participant.buchholz}</td>
+          <td><span class="net-points">${signedNumber(participant.netPoints)}</span></td>
           <td>${statusBadge(participant.status)}</td>
         </tr>
       `,
@@ -557,6 +610,7 @@ function renderStandings(standings) {
           <span class="rank">${index + 1}</span>
           <div><strong>${escapeHtml(participant.name)}</strong><small>${participant.affiliation ? escapeHtml(participant.affiliation) : `初始顺位 #${participant.seed}`}</small></div>
           <b>${participant.wins}-${participant.losses}</b>
+          <span class="net-points">净 ${signedNumber(participant.netPoints)}</span>
           ${statusBadge(participant.status)}
         </article>
       `,
@@ -567,11 +621,11 @@ function renderStandings(standings) {
     <section class="standings-section" id="standings">
       <div class="section-heading">
         <div><span class="step">瑞士轮榜单</span><h2>参赛单位排名</h2></div>
-        <span class="pill">同战绩按对手胜场排序</span>
+        <span class="pill">同战绩按净胜分排序</span>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>排名</th><th>参赛单位</th><th>战绩</th><th>对手分</th><th>状态</th></tr></thead>
+          <thead><tr><th>排名</th><th>参赛单位</th><th>瑞士轮战绩</th><th>净胜分</th><th>状态</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -993,9 +1047,10 @@ function buildResultsCanvas(value, standings) {
   const placements = getFinalPlacements(value, standings);
   const champion = placements.find((placement) => placement.rank === 1)?.participant;
   const runnerUp = placements.find((placement) => placement.rank === 2)?.participant;
-  const standingMap = new Map(
-    standings.map((participant) => [participant.id, participant]),
+  const performanceMap = new Map(
+    getPerformanceStats(value).map((item) => [item.participant.id, item]),
   );
+  const scoringLeaders = getScoringLeaders(value);
   const resultRows =
     placements.length > 0
       ? placements
@@ -1055,8 +1110,12 @@ function buildResultsCanvas(value, standings) {
   );
   if (runnerUp) {
     context.fillStyle = "#68736b";
-    context.font = '600 20px "Microsoft YaHei", sans-serif';
-    context.fillText(`亚军  ${runnerUp.name}`, margin + 36, y + 204);
+    context.font = '600 18px "Microsoft YaHei", sans-serif';
+    context.fillText(
+      `亚军 ${runnerUp.name}  ·  得分王 ${scoringLeaders.map((item) => item.participant.name).join("、")} ${signedNumber(scoringLeaders[0]?.totalNetPoints || 0)}`,
+      margin + 36,
+      y + 204,
+    );
   }
   context.fillStyle = "#c8ff47";
   context.font = '900 96px Georgia, serif';
@@ -1075,7 +1134,7 @@ function buildResultsCanvas(value, standings) {
   for (let index = 0; index < resultRows.length; index += 1) {
     const listed = resultRows[index];
     const participant = listed.participant;
-    const standing = standingMap.get(participant.id) || participant;
+    const stats = performanceMap.get(participant.id);
     roundedRect(
       context,
       margin,
@@ -1092,11 +1151,11 @@ function buildResultsCanvas(value, standings) {
     context.font = '700 21px "Microsoft YaHei", sans-serif';
     context.fillText(participant.name, margin + 92, y + 32);
     context.fillStyle = "#7e8981";
-    context.font = '500 18px "Microsoft YaHei", sans-serif';
-    context.fillText(listed.label, margin + 550, y + 32);
+    context.font = '500 16px "Microsoft YaHei", sans-serif';
+    context.fillText(listed.label, margin + 510, y + 32);
     context.textAlign = "right";
     context.fillText(
-      `${participant.wins}-${participant.losses}  对手分 ${standing.buchholz}`,
+      `瑞 ${recordText(stats.swissWins, stats.swissLosses)} · 淘 ${recordText(stats.knockoutWins, stats.knockoutLosses)} · 总 ${recordText(stats.totalWins, stats.totalLosses)} · 净 ${signedNumber(stats.totalNetPoints)}`,
       width - margin - 18,
       y + 32,
     );

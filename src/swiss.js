@@ -278,24 +278,38 @@ export function recalculateParticipants(tournament) {
 }
 
 export function getStandings(tournament) {
-  const byId = new Map(
-    tournament.participants.map((participant) => [participant.id, participant]),
+  const swissNetPoints = new Map(
+    tournament.participants.map((participant) => [participant.id, 0]),
   );
+
+  for (const round of tournament.rounds.filter((item) => item.finalized)) {
+    for (const match of round.matches) {
+      const pointDifference = match.games.reduce(
+        (sum, game) => sum + game.a - game.b,
+        0,
+      );
+      swissNetPoints.set(
+        match.aId,
+        (swissNetPoints.get(match.aId) || 0) + pointDifference,
+      );
+      swissNetPoints.set(
+        match.bId,
+        (swissNetPoints.get(match.bId) || 0) - pointDifference,
+      );
+    }
+  }
 
   return tournament.participants
     .map((participant) => ({
       ...participant,
-      buchholz: participant.opponents.reduce(
-        (sum, opponentId) => sum + (byId.get(opponentId)?.wins || 0),
-        0,
-      ),
+      netPoints: swissNetPoints.get(participant.id) || 0,
     }))
     .sort(
       (a, b) =>
         statusOrder(a.status) - statusOrder(b.status) ||
         b.wins - a.wins ||
         a.losses - b.losses ||
-        b.buchholz - a.buchholz ||
+        b.netPoints - a.netPoints ||
         a.seed - b.seed,
     );
 }

@@ -51,8 +51,75 @@ export function getFinalPlacements(tournament, standings) {
   return [...placements, ...swissOnly];
 }
 
+export function getPerformanceStats(tournament) {
+  const stats = new Map(
+    tournament.participants.map((participant) => [
+      participant.id,
+      {
+        participant,
+        swissWins: 0,
+        swissLosses: 0,
+        knockoutWins: 0,
+        knockoutLosses: 0,
+        swissNetPoints: 0,
+        knockoutNetPoints: 0,
+      },
+    ]),
+  );
+
+  for (const round of allRounds(tournament)) {
+    for (const match of round.matches) {
+      if (!match.winnerId) continue;
+      const aStats = stats.get(match.aId);
+      const bStats = stats.get(match.bId);
+      const winnerStats = stats.get(match.winnerId);
+      const loserStats = match.winnerId === match.aId ? bStats : aStats;
+      const prefix = round.type === "knockout" ? "knockout" : "swiss";
+      winnerStats[`${prefix}Wins`] += 1;
+      loserStats[`${prefix}Losses`] += 1;
+
+      const difference = match.games.reduce(
+        (sum, game) => sum + game.a - game.b,
+        0,
+      );
+      aStats[`${prefix}NetPoints`] += difference;
+      bStats[`${prefix}NetPoints`] -= difference;
+    }
+  }
+
+  return [...stats.values()].map((item) => ({
+    ...item,
+    totalWins: item.swissWins + item.knockoutWins,
+    totalLosses: item.swissLosses + item.knockoutLosses,
+    totalNetPoints: item.swissNetPoints + item.knockoutNetPoints,
+  }));
+}
+
+export function getScoringLeaders(tournament) {
+  if (tournament.phase !== "complete") return [];
+  const qualifierIds = new Set(
+    tournament.participants
+      .filter((participant) => participant.status === "qualified")
+      .map((participant) => participant.id),
+  );
+  const qualifierStats = getPerformanceStats(tournament).filter((item) =>
+    qualifierIds.has(item.participant.id),
+  );
+  const topNetPoints = Math.max(
+    ...qualifierStats.map((item) => item.totalNetPoints),
+  );
+  return qualifierStats.filter((item) => item.totalNetPoints === topNetPoints);
+}
+
 export function buildResultsCsv(tournament, standings) {
   const placements = getFinalPlacements(tournament, standings);
+  const performance = getPerformanceStats(tournament);
+  const performanceMap = new Map(
+    performance.map((item) => [item.participant.id, item]),
+  );
+  const scoringLeaderIds = new Set(
+    getScoringLeaders(tournament).map((item) => item.participant.id),
+  );
   const participantMap = new Map(
     tournament.participants.map((participant) => [participant.id, participant]),
   );
@@ -64,34 +131,68 @@ export function buildResultsCsv(tournament, standings) {
     ["更新时间", formatDateTime(tournament.updatedAt)],
     [],
     [tournament.phase === "complete" ? "最终名次" : "当前排名"],
-    ["名次", "成绩", "参赛单位", "俱乐部/小组", "瑞士轮战绩", "对手分"],
+    [
+      "名次",
+      "成绩",
+      "额外荣誉",
+      "参赛单位",
+      "俱乐部/小组",
+      "瑞士轮战绩",
+      "淘汰赛战绩",
+      "总战绩",
+      "瑞士轮净胜分",
+      "淘汰赛净胜分",
+      "总净胜分",
+    ],
   ];
 
   if (placements.length > 0) {
     for (const placement of placements) {
-      const standing = standings.find(
-        (participant) => participant.id === placement.participant.id,
-      );
+      const stats = performanceMap.get(placement.participant.id);
       lines.push([
         placement.rankText,
         placement.label,
+        scoringLeaderIds.has(placement.participant.id) ? "得分王" : "",
         placement.participant.name,
         placement.participant.affiliation,
-        `${placement.participant.wins}-${placement.participant.losses}`,
-        standing?.buchholz ?? "",
+        recordText(stats.swissWins, stats.swissLosses),
+        recordText(stats.knockoutWins, stats.knockoutLosses),
+        recordText(stats.totalWins, stats.totalLosses),
+        signedNumber(stats.swissNetPoints),
+        signedNumber(stats.knockoutNetPoints),
+        signedNumber(stats.totalNetPoints),
       ]);
     }
   } else {
     standings.forEach((participant, index) => {
+      const stats = performanceMap.get(participant.id);
       lines.push([
         index + 1,
         statusLabel(participant.status),
+        "",
         participant.name,
         participant.affiliation,
-        `${participant.wins}-${participant.losses}`,
-        participant.buchholz,
+        recordText(stats.swissWins, stats.swissLosses),
+        recordText(stats.knockoutWins, stats.knockoutLosses),
+        recordText(stats.totalWins, stats.totalLosses),
+        signedNumber(stats.swissNetPoints),
+        signedNumber(stats.knockoutNetPoints),
+        signedNumber(stats.totalNetPoints),
       ]);
     });
+  }
+
+  const scoringLeaders = getScoringLeaders(tournament);
+  if (scoringLeaders.length > 0) {
+    lines.push(
+      [],
+      ["得分王"],
+      ["参赛单位", "总净胜分"],
+      ...scoringLeaders.map((item) => [
+        item.participant.name,
+        signedNumber(item.totalNetPoints),
+      ]),
+    );
   }
 
   lines.push(
@@ -136,6 +237,15 @@ export function scoreText(match) {
   const playedGames = match.games.filter((game) => game.a !== 0 || game.b !== 0);
   if (playedGames.length === 0) return "未记录";
   return playedGames.map((game) => `${game.a}-${game.b}`).join(" / ");
+}
+
+export function recordText(wins, losses) {
+  return `${wins}-${losses}`;
+}
+
+export function signedNumber(value) {
+  if (value > 0) return `+${value}`;
+  return `${value}`;
 }
 
 function makePlacement(participantMap, id, rank, rankText, label) {

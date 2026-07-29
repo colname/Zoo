@@ -7,8 +7,14 @@ import {
   getCurrentRound,
   getStandings,
   selectWinner,
+  updateGameScore,
 } from "../src/swiss.js";
-import { buildResultsCsv, getFinalPlacements } from "../src/results.js";
+import {
+  buildResultsCsv,
+  getFinalPlacements,
+  getPerformanceStats,
+  getScoringLeaders,
+} from "../src/results.js";
 
 function completedTournament() {
   const tournament = createTournament({
@@ -22,6 +28,22 @@ function completedTournament() {
   while (tournament.phase !== "complete") {
     const round = getCurrentRound(tournament);
     for (const match of round.matches) {
+      match.games.forEach((game, gameIndex) => {
+        updateGameScore(
+          tournament,
+          match.id,
+          gameIndex,
+          "a",
+          match.targetPoints,
+        );
+        updateGameScore(
+          tournament,
+          match.id,
+          gameIndex,
+          "b",
+          match.targetPoints - 5,
+        );
+      });
       selectWinner(tournament, match.id, match.aId);
     }
     finalizeCurrentRound(tournament);
@@ -49,6 +71,60 @@ test("CSV export includes a BOM, final placements and complete match results", (
   assert.match(csv, /"最终名次"/);
   assert.match(csv, /"完整赛果"/);
   assert.match(csv, /"冠军"/);
+  assert.match(csv, /"得分王"/);
+  assert.match(csv, /"淘汰赛战绩"/);
+  assert.match(csv, /"总战绩"/);
+  assert.match(csv, /"总净胜分"/);
+  assert.doesNotMatch(csv, /"对手分"/);
   assert.match(csv, /"决赛"/);
   assert.match(csv, /"结果导出测试赛"/);
+});
+
+test("performance separates Swiss, knockout and total records", () => {
+  const tournament = completedTournament();
+  const stats = getPerformanceStats(tournament);
+  const champion = stats.find(
+    (item) => item.participant.id === tournament.knockout.championId,
+  );
+
+  assert.deepEqual(
+    [champion.swissWins, champion.swissLosses],
+    [champion.participant.wins, champion.participant.losses],
+  );
+  assert.deepEqual(
+    [champion.knockoutWins, champion.knockoutLosses],
+    [3, 0],
+  );
+  assert.equal(
+    champion.totalWins,
+    champion.swissWins + champion.knockoutWins,
+  );
+  assert.equal(
+    champion.totalLosses,
+    champion.swissLosses + champion.knockoutLosses,
+  );
+  assert.equal(
+    champion.totalNetPoints,
+    champion.swissNetPoints + champion.knockoutNetPoints,
+  );
+});
+
+test("scoring leaders are selected only from the final eight by total net points", () => {
+  const tournament = completedTournament();
+  const leaders = getScoringLeaders(tournament);
+  const qualifierIds = new Set(
+    tournament.participants
+      .filter((participant) => participant.status === "qualified")
+      .map((participant) => participant.id),
+  );
+  const qualifierStats = getPerformanceStats(tournament).filter((item) =>
+    qualifierIds.has(item.participant.id),
+  );
+  const maximum = Math.max(
+    ...qualifierStats.map((item) => item.totalNetPoints),
+  );
+
+  assert.ok(leaders.length >= 1);
+  assert.ok(leaders.every((item) => qualifierIds.has(item.participant.id)));
+  assert.ok(leaders.every((item) => item.totalNetPoints === maximum));
 });
