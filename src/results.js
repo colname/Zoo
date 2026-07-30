@@ -125,6 +125,12 @@ export function getKnockoutBracket(tournament) {
   const quarterfinal = roundMap.get("quarterfinal");
   const semifinal = roundMap.get("semifinal");
   const finalMatch = roundMap.get("final")?.matches[0];
+  const knockoutSeedMap = new Map(
+    (tournament.knockout.seedOrder || []).map((participantId, index) => [
+      participantId,
+      index + 1,
+    ]),
+  );
 
   if (
     quarterfinal?.matches.length !== 4 ||
@@ -136,6 +142,9 @@ export function getKnockoutBracket(tournament) {
 
   const makeEntry = (participantId, sourceMatch = null) => ({
     participant: participantMap.get(participantId),
+    seed:
+      knockoutSeedMap.get(participantId) ||
+      participantMap.get(participantId)?.seed,
     score: sourceMatch ? scoreText(sourceMatch) : "",
   });
 
@@ -214,7 +223,7 @@ export function buildResultsCsv(tournament, standings) {
       const stats = performanceMap.get(participant.id);
       lines.push([
         index + 1,
-        statusLabel(participant.status),
+        statusLabel(participant.status, tournament.config.swissMode),
         "",
         participant.name,
         participant.affiliation,
@@ -316,9 +325,9 @@ function allRounds(tournament) {
   return [...tournament.rounds, ...(tournament.knockout?.rounds || [])];
 }
 
-function statusLabel(status) {
+function statusLabel(status, swissMode) {
   return {
-    active: "比赛中",
+    active: swissMode === "seeding" ? "排种中" : "比赛中",
     qualified: "已晋级",
     eliminated: "已淘汰",
   }[status] ?? status;

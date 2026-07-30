@@ -17,13 +17,17 @@ import {
   getScoringLeaders,
 } from "../src/results.js";
 
-function completedTournament() {
+function completedTournament(entrantCount = 16) {
   const tournament = createTournament({
+    entrantCount,
     eventName: "结果导出测试赛",
     entrantType: "双打",
-    seed: "results-test",
-    names: Array.from({ length: 16 }, (_, index) => `组合 ${index + 1}`),
-    affiliations: Array.from({ length: 16 }, (_, index) => `俱乐部 ${index + 1}`),
+    seed: `results-test-${entrantCount}`,
+    names: Array.from({ length: entrantCount }, (_, index) => `组合 ${index + 1}`),
+    affiliations: Array.from(
+      { length: entrantCount },
+      (_, index) => `俱乐部 ${index + 1}`,
+    ),
   });
 
   while (tournament.phase !== "complete") {
@@ -152,4 +156,17 @@ test("knockout bracket preserves the 8-to-4-to-2-to-1 progression", () => {
     bracket.finalists.map((item) => item.participant.id),
     tournament.knockout.rounds[1].matches.map((match) => match.winnerId),
   );
+});
+
+test("8 entrant results contain eight placements and final seeding labels", () => {
+  const tournament = completedTournament(8);
+  const placements = getFinalPlacements(tournament, getStandings(tournament));
+  const bracket = getKnockoutBracket(tournament);
+
+  assert.equal(placements.length, 8);
+  assert.deepEqual(
+    bracket.quarterfinalists.map((entry) => entry.seed).sort((a, b) => a - b),
+    [1, 2, 3, 4, 5, 6, 7, 8],
+  );
+  assert.equal(bracket.champion.participant.id, tournament.knockout.championId);
 });

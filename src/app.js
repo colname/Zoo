@@ -51,15 +51,15 @@ function render() {
 function renderSetup() {
   app.innerHTML = `
     <section class="hero">
-      <div class="eyebrow"><span></span> 16 参赛单位 · 完整瑞士轮 + 单败淘汰赛</div>
+      <div class="eyebrow"><span></span> <b id="setup-mode-label">16 参赛单位 · 晋级瑞士轮 + 单败淘汰赛</b></div>
       <h1>球场边也能<br /><em>单手完成录分。</em></h1>
       <p>
-        适用于单打、双打组合和团体赛。瑞士轮产生 8 个晋级单位，
-        再通过四分之一决赛、半决赛和决赛决出冠军。
+        适用于单打、双打组合和团体赛。可选择 8 或 16 个参赛单位，
+        通过瑞士轮排种或晋级，再进入八强单败淘汰赛。
       </p>
       <div class="hero-stats">
-        <div><strong>16</strong><span>参赛单位</span></div>
-        <div><strong>5</strong><span>最多瑞士轮</span></div>
+        <div><strong id="setup-entrant-stat">16</strong><span>参赛单位</span></div>
+        <div><strong id="setup-round-stat">5</strong><span id="setup-round-label">最多瑞士轮</span></div>
         <div><strong>1</strong><span>最终冠军</span></div>
       </div>
     </section>
@@ -76,15 +76,23 @@ function renderSetup() {
       <form id="setup-form">
         <div class="form-grid">
           <label>
+            <span>参赛单位数量</span>
+            <select name="entrantCount" id="entrant-count">
+              <option value="16">16 个单位 · 晋级瑞士轮</option>
+              <option value="8">8 个单位 · 三轮排种瑞士轮</option>
+            </select>
+            <small>8 单位模式全员进入淘汰赛</small>
+          </label>
+          <label>
             <span>赛事名称</span>
             <input name="eventName" value="Zoo 羽毛球瑞士轮" required />
           </label>
           <label>
             <span>参赛类型</span>
             <select name="entrantType">
-              <option value="单打">单打 · 16 名球员</option>
-              <option value="双打">双打 · 16 组搭档</option>
-              <option value="团体">团体 · 16 支队伍</option>
+              <option value="单打">单打 · 球员</option>
+              <option value="双打">双打 · 搭档组合</option>
+              <option value="团体">团体 · 队伍</option>
             </select>
           </label>
           <label>
@@ -94,25 +102,29 @@ function renderSetup() {
           </label>
           <label>
             <span>赛事结构</span>
-            <input value="3 胜晋级 / 3 负淘汰 / 8 强单败" disabled />
+            <input id="setup-structure" value="3 胜晋级 / 3 负淘汰 / 8 强单败" disabled />
             <small>比分仅记录，不限制必须打到目标分</small>
           </label>
         </div>
 
         <div class="rules-cards">
           <article><span>普通瑞士轮</span><strong>21 分 · BO1</strong><small>一局定胜负</small></article>
-          <article><span>晋级/淘汰战</span><strong>31 分 · BO1</strong><small>生死战一局定胜负</small></article>
+          <article>
+            <span id="setup-middle-rule-title">晋级/淘汰战</span>
+            <strong id="setup-middle-rule-score">31 分 · BO1</strong>
+            <small id="setup-middle-rule-note">生死战一局定胜负</small>
+          </article>
           <article><span>八强淘汰赛</span><strong>15 分 · BO3</strong><small>每局 15 分，三局两胜</small></article>
         </div>
 
         <fieldset class="entrant-fieldset">
           <legend>
-            <span>参赛名单</span>
+            <span id="entrant-list-title">参赛名单 · 16 个单位</span>
             <small>俱乐部/小组可留空；填写后首轮自动回避同组</small>
           </legend>
           <div class="entrant-grid entrant-grid-detailed">
             ${Array.from({ length: 16 }, (_, index) => `
-              <div class="entrant-row">
+              <div class="entrant-row" data-entrant-index="${index}">
                 <span class="entrant-number">${String(index + 1).padStart(2, "0")}</span>
                 <label>
                   <span class="sr-only">参赛单位 ${index + 1}</span>
@@ -136,15 +148,22 @@ function renderSetup() {
     <section class="rules-strip">
       <article><span>01</span><div><strong>首轮回避</strong><p>尽量避免同俱乐部或同小组相遇。</p></div></article>
       <article><span>02</span><div><strong>同战绩抽签</strong><p>第二轮起同战绩优先且不重复交手。</p></div></article>
-      <article><span>03</span><div><strong>八强抽签</strong><p>两支 3-0 单位分别对阵 3-2 单位。</p></div></article>
+      <article><span>03</span><div><strong id="setup-bracket-rule-title">八强抽签</strong><p id="setup-bracket-rule-note">两支 3-0 单位分别对阵 3-2 单位。</p></div></article>
     </section>
   `;
+
+  const entrantCountSelect = document.querySelector("#entrant-count");
+  entrantCountSelect.addEventListener("change", () =>
+    updateSetupMode(Number(entrantCountSelect.value)),
+  );
+  updateSetupMode(Number(entrantCountSelect.value));
 
   document.querySelector("#setup-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
       tournament = createTournament({
+        entrantCount: Number(data.get("entrantCount")),
         eventName: data.get("eventName"),
         entrantType: data.get("entrantType"),
         seed: data.get("seed"),
@@ -158,6 +177,46 @@ function renderSetup() {
     } catch (error) {
       showToast(error.message, true);
     }
+  });
+}
+
+function updateSetupMode(entrantCount) {
+  const eightUnitMode = entrantCount === 8;
+  document.querySelector("#setup-mode-label").textContent = eightUnitMode
+    ? "8 参赛单位 · 三轮排种瑞士轮 + 单败淘汰赛"
+    : "16 参赛单位 · 晋级瑞士轮 + 单败淘汰赛";
+  document.querySelector("#setup-entrant-stat").textContent = entrantCount;
+  document.querySelector("#setup-round-stat").textContent = eightUnitMode ? "3" : "5";
+  document.querySelector("#setup-round-label").textContent = eightUnitMode
+    ? "固定瑞士轮"
+    : "最多瑞士轮";
+  document.querySelector("#setup-structure").value = eightUnitMode
+    ? "3 轮排种 / 全员晋级 / 固定种子对阵"
+    : "3 胜晋级 / 3 负淘汰 / 8 强单败";
+  document.querySelector("#setup-middle-rule-title").textContent = eightUnitMode
+    ? "瑞士轮排种"
+    : "晋级/淘汰战";
+  document.querySelector("#setup-middle-rule-score").textContent = eightUnitMode
+    ? "3 轮 · 21 分 BO1"
+    : "31 分 · BO1";
+  document.querySelector("#setup-middle-rule-note").textContent = eightUnitMode
+    ? "全员完成三轮，不设生死战"
+    : "生死战一局定胜负";
+  document.querySelector("#entrant-list-title").textContent =
+    `参赛名单 · ${entrantCount} 个单位`;
+  document.querySelector("#setup-bracket-rule-title").textContent = eightUnitMode
+    ? "固定种子对阵"
+    : "八强抽签";
+  document.querySelector("#setup-bracket-rule-note").textContent = eightUnitMode
+    ? "1-8、4-5、2-7、3-6，前两号种子分居上下半区。"
+    : "两支 3-0 单位分别对阵 3-2 单位。";
+
+  document.querySelectorAll("[data-entrant-index]").forEach((row) => {
+    const enabled = Number(row.dataset.entrantIndex) < entrantCount;
+    row.hidden = !enabled;
+    row.querySelectorAll("input").forEach((input) => {
+      input.disabled = !enabled;
+    });
   });
 }
 
@@ -197,30 +256,12 @@ function renderTournament() {
       ${
         complete
           ? ""
-          : `
-            <div class="summary-grid">
-              <article class="summary-card">
-                <span>当前阶段</span>
-                <strong>${escapeHtml(currentRound.name)}</strong>
-                <small>${roundRuleSummary(currentRound)}</small>
-              </article>
-              <article class="summary-card summary-green">
-                <span>已晋级八强</span>
-                <strong>${qualifiedCount}<i>/ 8</i></strong>
-                <small>瑞士轮达到 3 胜</small>
-              </article>
-              <article class="summary-card summary-red">
-                <span>瑞士轮淘汰</span>
-                <strong>${eliminatedCount}<i>/ 8</i></strong>
-                <small>瑞士轮达到 3 负</small>
-              </article>
-              <article class="summary-card">
-                <span>已录结果</span>
-                <strong>${completedMatchCount}</strong>
-                <small>比分可选，胜者必选</small>
-              </article>
-            </div>
-          `
+          : renderSummaryCards({
+              currentRound,
+              qualifiedCount,
+              eliminatedCount,
+              completedMatchCount,
+            })
       }
 
       ${
@@ -244,6 +285,60 @@ function renderTournament() {
   `;
 
   bindTournamentActions(currentRound, complete);
+}
+
+function renderSummaryCards({
+  currentRound,
+  qualifiedCount,
+  eliminatedCount,
+  completedMatchCount,
+}) {
+  const seedingMode = tournament.config.swissMode === "seeding";
+  const completedSwissRounds = tournament.rounds.filter(
+    (round) => round.finalized,
+  ).length;
+
+  return `
+    <div class="summary-grid">
+      <article class="summary-card">
+        <span>当前阶段</span>
+        <strong>${escapeHtml(currentRound.name)}</strong>
+        <small>${roundRuleSummary(currentRound)}</small>
+      </article>
+      ${
+        seedingMode
+          ? `
+            <article class="summary-card summary-green">
+              <span>瑞士轮排种</span>
+              <strong>${completedSwissRounds}<i>/ ${tournament.config.maxSwissRounds}</i></strong>
+              <small>全部单位完成 3 轮</small>
+            </article>
+            <article class="summary-card">
+              <span>淘汰赛名额</span>
+              <strong>8<i>/ 8</i></strong>
+              <small>所有参赛单位均可晋级</small>
+            </article>
+          `
+          : `
+            <article class="summary-card summary-green">
+              <span>已晋级八强</span>
+              <strong>${qualifiedCount}<i>/ 8</i></strong>
+              <small>瑞士轮达到 3 胜</small>
+            </article>
+            <article class="summary-card summary-red">
+              <span>瑞士轮淘汰</span>
+              <strong>${eliminatedCount}<i>/ 8</i></strong>
+              <small>瑞士轮达到 3 负</small>
+            </article>
+          `
+      }
+      <article class="summary-card">
+        <span>已录结果</span>
+        <strong>${completedMatchCount}</strong>
+        <small>比分可选，胜者必选</small>
+      </article>
+    </div>
+  `;
 }
 
 function renderPhaseTrack() {
@@ -294,7 +389,7 @@ function renderCurrentRound(round, participantMap) {
       }
 
       <div class="matches-grid">
-        ${round.matches.map((match) => renderMatch(match, participantMap)).join("")}
+        ${round.matches.map((match) => renderMatch(match, participantMap, round)).join("")}
       </div>
 
       <div class="round-actions">
@@ -314,10 +409,12 @@ function renderCurrentRound(round, participantMap) {
   `;
 }
 
-function renderMatch(match, participantMap) {
+function renderMatch(match, participantMap, round) {
   const a = participantMap.get(match.aId);
   const b = participantMap.get(match.bId);
   const isOpen = openScoreMatchId === match.id;
+  const aSeed = displaySeed(a, round);
+  const bSeed = displaySeed(b, round);
   return `
     <article class="match-card ${match.winnerId ? "has-result" : ""}">
       <div class="match-meta">
@@ -326,14 +423,14 @@ function renderMatch(match, participantMap) {
       </div>
       <button class="competitor ${match.winnerId === a.id ? "winner" : ""}" type="button"
         data-match-id="${match.id}" data-winner-id="${a.id}">
-        <span class="seed">${String(a.seed).padStart(2, "0")}</span>
+        <span class="seed">${String(aSeed).padStart(2, "0")}</span>
         <span class="competitor-name"><strong>${escapeHtml(a.name)}</strong>${a.affiliation ? `<small>${escapeHtml(a.affiliation)}</small>` : ""}</span>
         <span class="choose">${match.winnerId === a.id ? "胜者 ✓" : "选为胜者"}</span>
       </button>
       <div class="versus"><span></span>VS<span></span></div>
       <button class="competitor ${match.winnerId === b.id ? "winner" : ""}" type="button"
         data-match-id="${match.id}" data-winner-id="${b.id}">
-        <span class="seed">${String(b.seed).padStart(2, "0")}</span>
+        <span class="seed">${String(bSeed).padStart(2, "0")}</span>
         <span class="competitor-name"><strong>${escapeHtml(b.name)}</strong>${b.affiliation ? `<small>${escapeHtml(b.affiliation)}</small>` : ""}</span>
         <span class="choose">${match.winnerId === b.id ? "胜者 ✓" : "选为胜者"}</span>
       </button>
@@ -559,14 +656,14 @@ function renderKnockoutBracket(bracket) {
   const renderLevel = (className, entries, label, hasChildren = true) => `
     <div class="knockout-bracket-level ${className}">
       ${entries
-        .map(({ participant, score }) => {
+        .map(({ participant, seed, score }) => {
           const championPath = participant.id === bracket.championId;
           return `
             <div class="knockout-bracket-slot ${championPath ? "is-champion-path" : ""}">
               <article class="knockout-bracket-node">
                 <small>${label}</small>
                 <strong>${escapeHtml(participant.name)}</strong>
-                <span>${score ? escapeHtml(score) : `初始 #${String(participant.seed).padStart(2, "0")}`}</span>
+                <span>${score ? escapeHtml(score) : `种子 #${String(seed).padStart(2, "0")}`}</span>
               </article>
               ${hasChildren ? '<i class="knockout-bracket-fork" aria-hidden="true"></i>' : ""}
             </div>
@@ -656,7 +753,13 @@ function renderStandings(standings) {
       (participant, index) => `
         <article>
           <span class="rank">${index + 1}</span>
-          <div><strong>${escapeHtml(participant.name)}</strong><small>${participant.affiliation ? escapeHtml(participant.affiliation) : `初始顺位 #${participant.seed}`}</small></div>
+          <div><strong>${escapeHtml(participant.name)}</strong><small>${
+            participant.affiliation
+              ? escapeHtml(participant.affiliation)
+              : tournament.config.swissMode === "seeding"
+                ? `当前种子 #${index + 1}`
+                : `初始顺位 #${participant.seed}`
+          }</small></div>
           <b>${participant.wins}-${participant.losses}</b>
           <span class="net-points">净 ${signedNumber(participant.netPoints)}</span>
           ${statusBadge(participant.status)}
@@ -669,7 +772,11 @@ function renderStandings(standings) {
     <section class="standings-section" id="standings">
       <div class="section-heading">
         <div><span class="step">瑞士轮榜单</span><h2>参赛单位排名</h2></div>
-        <span class="pill">同战绩按净胜分排序</span>
+        <span class="pill">${
+          tournament.config.swissMode === "seeding"
+            ? "胜场优先 · 同胜场按净胜分"
+            : "同战绩按净胜分排序"
+        }</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -897,7 +1004,14 @@ function finalizeButtonLabel(round) {
   if (round.stage === "final") return "确认结果并产生冠军";
   if (round.stage === "semifinal") return "确认结果并生成决赛";
   if (round.stage === "quarterfinal") return "确认结果并生成半决赛";
-  if (round.number === 5) return "确认结果并生成八强对阵";
+  if (
+    round.type === "swiss" &&
+    round.number === tournament.config.maxSwissRounds
+  ) {
+    return tournament.config.swissMode === "seeding"
+      ? "确认排种并生成固定八强对阵"
+      : "确认结果并生成八强对阵";
+  }
   return "确认结果并生成下一轮";
 }
 
@@ -927,9 +1041,16 @@ function recordPoolLabels(round, participantMap) {
   return records.map((record) => `<span>${record}</span>`).join("");
 }
 
+function displaySeed(participant, round) {
+  if (round.type !== "knockout") return participant.seed;
+  const index = tournament.knockout?.seedOrder?.indexOf(participant.id) ?? -1;
+  return index >= 0 ? index + 1 : participant.seed;
+}
+
 function statusBadge(status) {
   const labels = {
-    active: "比赛中",
+    active:
+      tournament.config.swissMode === "seeding" ? "排种中" : "比赛中",
     qualified: "已晋级",
     eliminated: "已淘汰",
   };
@@ -974,7 +1095,7 @@ function validateImport(imported) {
   if (
     imported?.version !== 2 ||
     !Array.isArray(imported.participants) ||
-    imported.participants.length !== 16 ||
+    ![8, 16].includes(imported.participants.length) ||
     !Array.isArray(imported.rounds)
   ) {
     throw new Error("不是有效的 Zoo v2 赛事存档");
@@ -1134,7 +1255,7 @@ function buildResultsCanvas(value, standings) {
   context.fillStyle = "#98a29a";
   context.font = '500 22px "Microsoft YaHei", sans-serif';
   context.fillText(
-    `${value.entrantType} · 16 参赛单位 · ${formatDate(value.updatedAt)}`,
+    `${value.entrantType} · ${value.participants.length} 参赛单位 · ${formatDate(value.updatedAt)}`,
     margin,
     y,
   );
@@ -1352,7 +1473,7 @@ function drawCanvasKnockoutBracket(context, bracket, x, y, width) {
       context.fillStyle = championPath ? "#a9d83f" : "#68736b";
       context.font = '600 11px "Microsoft YaHei", sans-serif';
       context.fillText(
-        entry.score || `#${String(entry.participant.seed).padStart(2, "0")}`,
+        entry.score || `#${String(entry.seed).padStart(2, "0")}`,
         centerX,
         nodeY + 61,
       );

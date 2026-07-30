@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A mobile-first Swiss-system and knockout tournament manager for 16 badminton entrants.",
+  "description": "A mobile-first Swiss-system and knockout tournament manager for 8 or 16 badminton entrants.",
   "scripts": {
     "start": "node scripts/serve.mjs",
     "test": "node --test"

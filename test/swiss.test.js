@@ -25,6 +25,20 @@ function makeTournament() {
   });
 }
 
+function makeEightTournament() {
+  return createTournament({
+    entrantCount: 8,
+    eventName: "八单位测试赛",
+    entrantType: "双打",
+    seed: "zoo-eight-test",
+    names: Array.from({ length: 8 }, (_, index) => `组合 ${index + 1}`),
+    affiliations: Array.from(
+      { length: 8 },
+      (_, index) => `俱乐部 ${Math.floor(index / 2) + 1}`,
+    ),
+  });
+}
+
 function chooseAllWinners(tournament, side = "a") {
   const round = getCurrentRound(tournament);
   for (const match of round.matches) {
@@ -187,4 +201,86 @@ test("undo can return from quarterfinals to the final Swiss round", () => {
   assert.equal(tournament.phase, "swiss");
   assert.equal(tournament.knockout, null);
   assert.equal(tournament.rounds.at(-1).finalized, false);
+});
+
+test("8 entrant mode uses three 21-point Swiss rounds and qualifies everyone", () => {
+  const tournament = makeEightTournament();
+
+  while (tournament.phase === "swiss") {
+    const round = getCurrentRound(tournament);
+    assert.ok(
+      round.matches.every(
+        (match) => match.targetPoints === 21 && match.bestOf === 1,
+      ),
+    );
+    chooseAllWinners(tournament);
+  }
+
+  const recordDistribution = tournament.participants
+    .map((participant) => `${participant.wins}-${participant.losses}`)
+    .sort();
+
+  assert.equal(tournament.rounds.length, 3);
+  assert.equal(
+    tournament.participants.filter(
+      (participant) => participant.status === "qualified",
+    ).length,
+    8,
+  );
+  assert.equal(
+    tournament.participants.filter(
+      (participant) => participant.status === "eliminated",
+    ).length,
+    0,
+  );
+  assert.deepEqual(recordDistribution, [
+    "0-3",
+    "1-2",
+    "1-2",
+    "1-2",
+    "2-1",
+    "2-1",
+    "2-1",
+    "3-0",
+  ]);
+});
+
+test("8 entrant mode creates fixed 1-8, 4-5, 2-7 and 3-6 quarterfinals", () => {
+  const tournament = makeEightTournament();
+  completeSwiss(tournament);
+
+  const standings = getStandings(tournament);
+  const quarterfinal = getCurrentRound(tournament);
+  const expectedPairs = [
+    [standings[0].id, standings[7].id],
+    [standings[3].id, standings[4].id],
+    [standings[1].id, standings[6].id],
+    [standings[2].id, standings[5].id],
+  ];
+
+  assert.deepEqual(
+    quarterfinal.matches.map((match) => [match.aId, match.bId]),
+    expectedPairs,
+  );
+  assert.deepEqual(
+    tournament.knockout.seedOrder,
+    standings.map((participant) => participant.id),
+  );
+});
+
+test("8 entrant mode can undo the seeded quarterfinal draw", () => {
+  const tournament = makeEightTournament();
+  completeSwiss(tournament);
+
+  undoLastSettlement(tournament);
+
+  assert.equal(tournament.phase, "swiss");
+  assert.equal(tournament.knockout, null);
+  assert.equal(tournament.rounds.length, 3);
+  assert.equal(tournament.rounds.at(-1).finalized, false);
+  assert.ok(
+    tournament.participants.every(
+      (participant) => participant.status === "active",
+    ),
+  );
 });

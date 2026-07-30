@@ -4,6 +4,16 @@ export const DEFAULT_CONFIG = Object.freeze({
   lossesToEliminate: 3,
   maxSwissRounds: 5,
   knockoutFormat: "15 分三局两胜",
+  swissMode: "qualification",
+});
+
+export const EIGHT_ENTRANT_CONFIG = Object.freeze({
+  entrantCount: 8,
+  winsToQualify: null,
+  lossesToEliminate: null,
+  maxSwissRounds: 3,
+  knockoutFormat: "15 分三局两胜",
+  swissMode: "seeding",
 });
 
 export const MATCH_RULES = Object.freeze({
@@ -29,8 +39,9 @@ export function createTournament(options) {
   const affiliations = (options.affiliations || names.map(() => "")).map(
     (value) => value.trim(),
   );
+  const entrantCount = Number(options.entrantCount ?? names.length);
 
-  validateEntrants(names);
+  validateEntrants(names, entrantCount);
 
   const tournament = {
     version: 2,
@@ -39,7 +50,11 @@ export function createTournament(options) {
     entrantType: options.entrantType || "单打",
     seed: options.seed?.trim() || new Date().toISOString().slice(0, 10),
     phase: "swiss",
-    config: { ...DEFAULT_CONFIG },
+    config: {
+      ...(entrantCount === EIGHT_ENTRANT_CONFIG.entrantCount
+        ? EIGHT_ENTRANT_CONFIG
+        : DEFAULT_CONFIG),
+    },
     participants: names.map((name, index) => ({
       id: `p-${index + 1}`,
       name,
@@ -70,7 +85,7 @@ export function buildSwissRound(tournament) {
     throw new Error("瑞士轮已经结束，没有可继续配对的参赛单位。");
   }
   if (active.length % 2 !== 0) {
-    throw new Error("当前参赛单位为奇数，16 人版本不应出现轮空。");
+    throw new Error("当前参赛单位为奇数，8/16 单位模式不应出现轮空。");
   }
   if (roundNumber > tournament.config.maxSwissRounds) {
     throw new Error("已达到瑞士轮最大轮数。");
@@ -88,7 +103,7 @@ export function buildSwissRound(tournament) {
     finalized: false,
     warnings: buildSwissWarnings(pairs, roundNumber),
     matches: pairs.map(([a, b], index) => {
-      const rule = swissMatchRule(a, b, roundNumber);
+      const rule = swissMatchRule(a, b, roundNumber, tournament.config);
       return {
         id: `swiss-r${roundNumber}-m${index + 1}`,
         court: index + 1,
@@ -158,6 +173,20 @@ export function finalizeSwissRound(tournament) {
 
   currentRound.finalized = true;
   recalculateParticipants(tournament);
+
+  const seedingSwissComplete =
+    tournament.config.swissMode === "seeding" &&
+    currentRound.number >= tournament.config.maxSwissRounds;
+
+  if (seedingSwissComplete) {
+    tournament.participants.forEach((participant) => {
+      participant.status = "qualified";
+    });
+    tournament.knockout = buildKnockout(tournament);
+    tournament.phase = "knockout";
+    tournament.updatedAt = new Date().toISOString();
+    return tournament;
+  }
 
   const activeCount = tournament.participants.filter(
     (participant) => participant.status === "active",
@@ -269,6 +298,7 @@ export function recalculateParticipants(tournament) {
   }
 
   for (const participant of tournament.participants) {
+    if (tournament.config.swissMode === "seeding") continue;
     if (participant.wins >= tournament.config.winsToQualify) {
       participant.status = "qualified";
     } else if (participant.losses >= tournament.config.lossesToEliminate) {
@@ -299,6 +329,16 @@ export function getStandings(tournament) {
     }
   }
 
+  const headToHeadWinners = new Map();
+  for (const round of tournament.rounds.filter((item) => item.finalized)) {
+    for (const match of round.matches) {
+      headToHeadWinners.set(
+        [match.aId, match.bId].sort().join(":"),
+        match.winnerId,
+      );
+    }
+  }
+
   return tournament.participants
     .map((participant) => ({
       ...participant,
@@ -310,6 +350,7 @@ export function getStandings(tournament) {
         b.wins - a.wins ||
         a.losses - b.losses ||
         b.netPoints - a.netPoints ||
+        headToHeadOrder(a, b, headToHeadWinners) ||
         a.seed - b.seed,
     );
 }
@@ -333,6 +374,10 @@ export function swissIsComplete(tournament) {
 }
 
 function buildKnockout(tournament) {
+  if (tournament.config.swissMode === "seeding") {
+    return buildSeededKnockout(tournament);
+  }
+
   const qualifiers = tournament.participants.filter(
     (participant) => participant.status === "qualified",
   );
@@ -367,6 +412,7 @@ function buildKnockout(tournament) {
   return {
     format: tournament.config.knockoutFormat,
     championId: null,
+    seedOrder: [],
     rounds: [
       {
         type: "knockout",
@@ -375,6 +421,47 @@ function buildKnockout(tournament) {
         number: 1,
         finalized: false,
         warnings: [],
+        matches: quarterfinalPairs.map(([a, b], index) => ({
+          id: `knockout-qf-m${index + 1}`,
+          court: index + 1,
+          aId: a.id,
+          bId: b.id,
+          winnerId: null,
+          ...matchScoring(MATCH_RULES.knockout),
+        })),
+      },
+    ],
+  };
+}
+
+function buildSeededKnockout(tournament) {
+  const seeded = getStandings(tournament);
+  if (
+    seeded.length !== EIGHT_ENTRANT_CONFIG.entrantCount ||
+    seeded.some((participant) => participant.status !== "qualified")
+  ) {
+    throw new Error("8 单位瑞士轮排种异常，无法生成淘汰赛。");
+  }
+
+  const quarterfinalPairs = [
+    [seeded[0], seeded[7]],
+    [seeded[3], seeded[4]],
+    [seeded[1], seeded[6]],
+    [seeded[2], seeded[5]],
+  ];
+
+  return {
+    format: tournament.config.knockoutFormat,
+    championId: null,
+    seedOrder: seeded.map((participant) => participant.id),
+    rounds: [
+      {
+        type: "knockout",
+        stage: "quarterfinal",
+        name: "四分之一决赛",
+        number: 1,
+        finalized: false,
+        warnings: ["固定种子对阵：1-8、4-5、2-7、3-6。"],
         matches: quarterfinalPairs.map(([a, b], index) => ({
           id: `knockout-qf-m${index + 1}`,
           court: index + 1,
@@ -490,7 +577,8 @@ function solveOptimalPairs(participants, pairCost) {
   return solve(fullMask).pairs;
 }
 
-function swissMatchRule(a, b, roundNumber) {
+function swissMatchRule(a, b, roundNumber, config) {
+  if (config.swissMode === "seeding") return MATCH_RULES.swiss;
   if (roundNumber <= 2) return MATCH_RULES.swiss;
   const isAdvancementOrEliminationMatch = [a, b].some(
     (participant) => participant.wins === 2 || participant.losses === 2,
@@ -528,9 +616,12 @@ function buildSwissWarnings(pairs, roundNumber) {
   return warnings;
 }
 
-function validateEntrants(names) {
-  if (names.length !== DEFAULT_CONFIG.entrantCount) {
-    throw new Error(`当前版本固定需要 ${DEFAULT_CONFIG.entrantCount} 个参赛单位。`);
+function validateEntrants(names, entrantCount) {
+  if (![EIGHT_ENTRANT_CONFIG.entrantCount, DEFAULT_CONFIG.entrantCount].includes(entrantCount)) {
+    throw new Error("参赛单位数量只能选择 8 或 16。");
+  }
+  if (names.length !== entrantCount) {
+    throw new Error(`当前模式需要 ${entrantCount} 个参赛单位。`);
   }
   if (names.some((name) => !name)) {
     throw new Error("参赛单位名称不能为空。");
@@ -592,6 +683,13 @@ function normalized(value) {
 
 function statusOrder(status) {
   return { qualified: 0, active: 1, eliminated: 2 }[status] ?? 3;
+}
+
+function headToHeadOrder(a, b, headToHeadWinners) {
+  const winnerId = headToHeadWinners.get([a.id, b.id].sort().join(":"));
+  if (winnerId === a.id) return -1;
+  if (winnerId === b.id) return 1;
+  return 0;
 }
 
 function makeId(prefix) {

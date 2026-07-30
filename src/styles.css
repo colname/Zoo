@@ -143,6 +143,10 @@ main {
   box-shadow: 0 0 16px var(--lime);
 }
 
+.eyebrow b {
+  font: inherit;
+}
+
 .hero h1 {
   margin: 22px 0;
   font-size: clamp(48px, 8vw, 92px);
@@ -1070,6 +1074,10 @@ summary small {
   grid-template-columns: 30px 1.25fr 0.9fr;
   gap: 8px;
   align-items: center;
+}
+
+.entrant-row[hidden] {
+  display: none;
 }
 
 .entrant-row label {
