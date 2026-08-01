@@ -491,11 +491,16 @@ function renderCurrentRound(round, participantMap) {
           <h2>${escapeHtml(round.name)}</h2>
           <p>已选胜者 ${completedMatches}/${round.matches.length} 场 · 比分不限制目标分</p>
         </div>
-        ${
-          round.type === "swiss"
-            ? `<div class="round-records">${recordPoolLabels(round, participantMap)}</div>`
-            : `<span class="knockout-badge">15 分 BO3</span>`
-        }
+        <div class="round-heading-aside">
+          ${
+            round.type === "swiss"
+              ? `<div class="round-records">${recordPoolLabels(round, participantMap)}</div>`
+              : `<span class="knockout-badge">15 分 BO3</span>`
+          }
+          <button class="round-share-button" type="button" data-share-round="${roundShareKey(round)}">
+            <span aria-hidden="true">↗</span> 分享本轮赛程图
+          </button>
+        </div>
       </div>
 
       ${
@@ -943,6 +948,12 @@ function renderHistoryRound(round, participantMap) {
           })
           .join("")}
       </div>
+      <div class="history-share-bar">
+        <span>${round.finalized ? "已完成赛段，可再次分享" : "当前赛段，分享最新对阵与结果"}</span>
+        <button type="button" data-share-round="${roundShareKey(round)}">
+          <span aria-hidden="true">↗</span> 生成本轮赛程图
+        </button>
+      </div>
     </details>
   `;
 }
@@ -1058,6 +1069,25 @@ function bindTournamentActions(currentRound, complete) {
     }
   });
   document.querySelector("[data-export-mobile]")?.addEventListener("click", openExportMenu);
+  document.querySelectorAll("[data-share-round]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const round = allRounds(tournament).find(
+        (item) => roundShareKey(item) === button.dataset.shareRound,
+      );
+      if (!round) {
+        showToast("没有找到这个赛段", true);
+        return;
+      }
+      button.disabled = true;
+      try {
+        await exportRoundScheduleImage(round);
+      } catch (error) {
+        showToast(`生成失败：${error.message}`, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   document.querySelector("[data-export-close]")?.addEventListener("click", closeExportMenu);
   document.querySelector("#export-menu")?.addEventListener("click", (event) => {
     if (event.target.id === "export-menu") closeExportMenu();
@@ -1141,6 +1171,12 @@ function canUndo() {
 
 function allRounds(value) {
   return [...value.rounds, ...(value.knockout?.rounds || [])];
+}
+
+function roundShareKey(round) {
+  return round.type === "swiss"
+    ? `swiss-${round.number}`
+    : `knockout-${round.stage || round.number}`;
 }
 
 function recordPoolLabels(round, participantMap) {
@@ -1268,6 +1304,29 @@ async function exportResultsImage() {
   showToast("比赛结果长图已导出");
 }
 
+async function exportRoundScheduleImage(round) {
+  if (!tournament || !round) return;
+  showToast(`正在生成${round.name}赛程图…`);
+  const canvas = buildRoundScheduleCanvas(tournament, round);
+  const blob = await canvasToBlob(canvas);
+  await shareOrDownload(
+    blob,
+    `${safeFilename(tournament.eventName)}-${safeFilename(round.name)}-赛程图.png`,
+    `${tournament.eventName} · ${round.name}赛程`,
+  );
+  showToast(`${round.name}赛程图已生成`);
+}
+
+function canvasToBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (value) => (value ? resolve(value) : reject(new Error("无法生成图片"))),
+      "image/png",
+      0.96,
+    );
+  });
+}
+
 function exportTournamentArchive() {
   if (!tournament) return;
   const blob = new Blob([JSON.stringify(tournament, null, 2)], {
@@ -1305,6 +1364,180 @@ function downloadBlob(blob, filename) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function buildRoundScheduleCanvas(value, round) {
+  const width = 1080;
+  const margin = 64;
+  const cardHeight = 190;
+  const cardGap = 18;
+  const headerHeight = 390;
+  const footerHeight = 126;
+  const height =
+    headerHeight +
+    round.matches.length * cardHeight +
+    Math.max(0, round.matches.length - 1) * cardGap +
+    footerHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const participantMap = new Map(
+    value.participants.map((participant) => [participant.id, participant]),
+  );
+  const completedMatches = round.matches.filter((match) => match.winnerId).length;
+  const phaseLabel = round.type === "swiss" ? "SWISS STAGE · 瑞士轮" : "KNOCKOUT · 淘汰赛";
+
+  context.fillStyle = "#080b0f";
+  context.fillRect(0, 0, width, height);
+  const topGlow = context.createRadialGradient(width - 50, 0, 20, width - 50, 0, 720);
+  topGlow.addColorStop(0, "rgba(200,255,71,0.22)");
+  topGlow.addColorStop(1, "rgba(200,255,71,0)");
+  context.fillStyle = topGlow;
+  context.fillRect(0, 0, width, 760);
+
+  context.fillStyle = "#c8ff47";
+  context.font = '900 32px "Microsoft YaHei", sans-serif';
+  context.fillText("ZOO", margin, 78);
+  context.fillStyle = "#7e8981";
+  context.font = '700 21px "Microsoft YaHei", sans-serif';
+  context.fillText("BADMINTON CLUB · 赛程分享", margin + 100, 78);
+
+  context.fillStyle = "#9ca69f";
+  context.font = '800 19px "Microsoft YaHei", sans-serif';
+  context.fillText(phaseLabel, margin, 140);
+  context.fillStyle = "#f5f7f3";
+  context.font = '900 52px "Microsoft YaHei", sans-serif';
+  drawCanvasText(context, value.eventName, margin, 205, width - margin * 2, 58);
+  context.fillStyle = "#c8ff47";
+  context.font = '900 38px "Microsoft YaHei", sans-serif';
+  context.fillText(round.name, margin, 266);
+
+  roundedRect(context, margin, 300, width - margin * 2, 62, 18, "#11180f");
+  context.fillStyle = "#98a29a";
+  context.font = '700 18px "Microsoft YaHei", sans-serif';
+  context.fillText(`${value.entrantType} · ${round.matches.length} 场对阵`, margin + 24, 339);
+  context.textAlign = "center";
+  context.fillStyle = "#f5f7f3";
+  context.fillText(roundRuleSummary(round), width / 2, 339);
+  context.textAlign = "right";
+  context.fillStyle = completedMatches === round.matches.length ? "#c8ff47" : "#ffd166";
+  context.fillText(`已完成 ${completedMatches}/${round.matches.length}`, width - margin - 24, 339);
+  context.textAlign = "left";
+
+  let y = headerHeight;
+  round.matches.forEach((match, index) => {
+    const a = participantMap.get(match.aId);
+    const b = participantMap.get(match.bId);
+    const completed = Boolean(match.winnerId);
+    const aWon = match.winnerId === a?.id;
+    const bWon = match.winnerId === b?.id;
+    const cardFill = completed ? "#11190f" : "#10151b";
+    roundedRect(context, margin, y, width - margin * 2, cardHeight, 24, cardFill);
+
+    context.fillStyle = "#78837b";
+    context.font = '800 16px "Microsoft YaHei", sans-serif';
+    context.fillText(`场地 ${String(match.court).padStart(2, "0")}`, margin + 24, y + 35);
+    context.fillStyle = match.targetPoints === 31 ? "#ffd166" : "#9ca69f";
+    context.fillText(match.format, margin + 128, y + 35);
+    roundedRect(
+      context,
+      width - margin - 118,
+      y + 16,
+      94,
+      32,
+      16,
+      completed ? "#26370f" : "#182129",
+    );
+    context.fillStyle = completed ? "#c8ff47" : "#88938b";
+    context.font = '800 14px "Microsoft YaHei", sans-serif';
+    context.textAlign = "center";
+    context.fillText(completed ? "已完赛" : "待比赛", width - margin - 71, y + 38);
+
+    drawScheduleParticipant(
+      context,
+      a,
+      displaySeedForShare(value, a, round),
+      margin + 34,
+      y + 78,
+      360,
+      aWon,
+      "left",
+    );
+    drawScheduleParticipant(
+      context,
+      b,
+      displaySeedForShare(value, b, round),
+      width - margin - 34,
+      y + 78,
+      360,
+      bWon,
+      "right",
+    );
+
+    context.textAlign = "center";
+    context.fillStyle = completed ? "#c8ff47" : "#57625a";
+    context.font = '900 21px Georgia, serif';
+    context.fillText(completed ? scoreText(match) : "VS", width / 2, y + 113);
+    if (completed) {
+      const winner = participantMap.get(match.winnerId);
+      context.fillStyle = "#879188";
+      context.font = '700 14px "Microsoft YaHei", sans-serif';
+      context.fillText(`胜者 · ${winner?.name || "—"}`, width / 2, y + 146);
+    } else {
+      context.strokeStyle = "#2a3430";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(width / 2 - 54, y + 137);
+      context.lineTo(width / 2 + 54, y + 137);
+      context.stroke();
+    }
+    context.textAlign = "left";
+    y += cardHeight + cardGap;
+  });
+
+  y += 28;
+  context.fillStyle = "#68736b";
+  context.font = '600 16px "Microsoft YaHei", sans-serif';
+  context.fillText("荧光绿表示已确认胜者 · 具体场地与开赛顺序以现场安排为准", margin, y + 30);
+  context.textAlign = "right";
+  context.fillStyle = "#c8ff47";
+  context.font = '800 17px "Microsoft YaHei", sans-serif';
+  context.fillText("colname.github.io/Zoo/", width - margin, y + 30);
+  context.textAlign = "left";
+  return canvas;
+}
+
+function drawScheduleParticipant(context, participant, seed, x, y, maxWidth, winner, align) {
+  const direction = align === "right" ? -1 : 1;
+  context.textAlign = align;
+  context.fillStyle = winner ? "#c8ff47" : "#f5f7f3";
+  context.font = `${winner ? "900" : "800"} 30px "Microsoft YaHei", sans-serif`;
+  drawCanvasText(context, participant?.name || "—", x, y + 29, maxWidth, 34);
+  context.fillStyle = winner ? "#a9d83f" : "#6f7a72";
+  context.font = '700 15px "Microsoft YaHei", sans-serif';
+  const affiliation = participant?.affiliation ? ` · ${participant.affiliation}` : "";
+  drawCanvasText(
+    context,
+    `#${String(seed).padStart(2, "0")}${affiliation}`,
+    x,
+    y + 61,
+    maxWidth,
+    20,
+  );
+  if (winner) {
+    context.fillStyle = "#c8ff47";
+    context.beginPath();
+    context.arc(x + direction * 12, y + 84, 4, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.textAlign = "left";
+}
+
+function displaySeedForShare(value, participant, round) {
+  if (round.type !== "knockout") return participant?.seed || 0;
+  const index = value.knockout?.seedOrder?.indexOf(participant?.id) ?? -1;
+  return index >= 0 ? index + 1 : participant?.seed || 0;
 }
 
 function buildResultsCanvas(value, standings) {

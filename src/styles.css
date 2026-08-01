@@ -532,6 +532,45 @@ fieldset {
   gap: 7px;
 }
 
+.round-heading-aside {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.round-share-button,
+.history-share-bar button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  color: #dfffa0;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgb(200 255 71 / 0.08);
+  border: 1px solid rgb(200 255 71 / 0.28);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.round-share-button:hover,
+.round-share-button:focus-visible,
+.history-share-bar button:hover,
+.history-share-bar button:focus-visible {
+  color: #111607;
+  background: var(--lime);
+  border-color: var(--lime);
+  outline: none;
+}
+
+.round-share-button:disabled,
+.history-share-bar button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .round-records span {
   display: grid;
   min-width: 45px;
@@ -819,6 +858,23 @@ summary small {
 .history-winner {
   color: var(--lime);
   font-weight: 800;
+}
+
+.history-share-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  color: #6f7a72;
+  font-size: 9px;
+  background: #0b100d;
+  border-top: 1px solid #202930;
+}
+
+.history-share-bar button {
+  min-height: 34px;
+  white-space: nowrap;
 }
 
 .completion {
@@ -1577,6 +1633,20 @@ summary small {
     align-self: flex-start;
   }
 
+  .round-heading-aside {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .round-heading-aside .round-records {
+    flex-wrap: wrap;
+  }
+
+  .round-share-button {
+    width: 100%;
+    min-height: 44px;
+  }
+
   .round-actions {
     align-items: stretch;
     flex-direction: column-reverse;
@@ -1631,6 +1701,16 @@ summary small {
 
   .history-matches div {
     grid-template-columns: 1fr minmax(42px, auto) 1fr;
+  }
+
+  .history-share-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-share-bar button {
+    width: 100%;
+    min-height: 42px;
   }
 }
 
