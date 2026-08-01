@@ -37,7 +37,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -1063,6 +1064,100 @@ summary small {
 .rules-cards small {
   color: #68736b;
   font-size: 10px;
+}
+
+.bulk-roster-card {
+  padding: 24px;
+  margin-top: 22px;
+  background:
+    linear-gradient(145deg, rgb(200 255 71 / 0.055), transparent 42%),
+    #0b0f13;
+  border: 1px solid #33412f;
+  border-radius: 16px;
+}
+
+.bulk-roster-heading {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.bulk-roster-heading h3 {
+  margin: 6px 0 0;
+  font-size: 22px;
+}
+
+.bulk-roster-count {
+  min-width: 70px;
+  padding: 8px 11px;
+  color: #849087;
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+  background: #11171d;
+  border: 1px solid #2c3731;
+  border-radius: 99px;
+}
+
+.bulk-roster-count.is-ready {
+  color: #101508;
+  background: var(--lime);
+  border-color: var(--lime);
+}
+
+.bulk-roster-card > p {
+  margin: 12px 0 15px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.bulk-roster-card textarea {
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  padding: 15px;
+  color: var(--text);
+  line-height: 1.75;
+  resize: vertical;
+  background: #080b0f;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  transition: 150ms ease;
+}
+
+.bulk-roster-card textarea:focus {
+  border-color: var(--lime);
+  box-shadow: 0 0 0 3px rgb(200 255 71 / 0.1);
+}
+
+.bulk-roster-actions {
+  display: grid;
+  grid-template-columns: auto auto minmax(160px, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bulk-roster-status {
+  padding: 11px 13px;
+  margin-top: 10px;
+  color: #879289;
+  font-size: 10px;
+  line-height: 1.55;
+  background: #10151b;
+  border-radius: 9px;
+}
+
+.bulk-roster-status.is-ready {
+  color: var(--green);
+  background: rgb(94 228 154 / 0.07);
+}
+
+.bulk-roster-status.has-warning {
+  color: var(--yellow);
+  background: rgb(255 209 102 / 0.07);
 }
 
 .entrant-grid-detailed {
@@ -2683,6 +2778,38 @@ summary small {
 }
 
 @media (max-width: 620px) {
+  .bulk-roster-card {
+    padding: 17px;
+  }
+
+  .bulk-roster-heading {
+    align-items: flex-start;
+  }
+
+  .bulk-roster-heading h3 {
+    font-size: 19px;
+  }
+
+  .bulk-roster-card textarea {
+    min-height: 190px;
+    font-size: 14px;
+  }
+
+  .bulk-roster-actions {
+    grid-template-columns: 1fr 1.35fr;
+  }
+
+  .bulk-roster-actions .button {
+    min-width: 0;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .bulk-roster-actions .button-primary {
+    grid-column: 1 / -1;
+    min-height: 48px;
+  }
+
   .club-page {
     padding-bottom: 0;
   }

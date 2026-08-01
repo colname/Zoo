@@ -18,6 +18,7 @@ import {
   scoreText,
   signedNumber,
 } from "./results.js";
+import { parseRosterText } from "./roster.js";
 
 const STORAGE_KEY = "zoo-swiss-tournament-v2";
 const QUICK_SCORES = [11, 15, 21, 25, 31];
@@ -117,6 +118,32 @@ function renderSetup() {
           <article><span>八强淘汰赛</span><strong>15 分 · BO3</strong><small>每局 15 分，三局两胜</small></article>
         </div>
 
+        <section class="bulk-roster-card" aria-labelledby="bulk-roster-title">
+          <div class="bulk-roster-heading">
+            <div>
+              <span class="step">复制接龙</span>
+              <h3 id="bulk-roster-title">粘贴报名名单，自动识别</h3>
+            </div>
+            <span class="bulk-roster-count" id="bulk-roster-count">0 / 16</span>
+          </div>
+          <p>
+            支持“1、姓名”“2. 姓名”或每行一个参赛单位；双打组合写在同一行。
+          </p>
+          <textarea
+            id="bulk-roster-input"
+            rows="8"
+            placeholder="接龙示例：&#10;1、林丹&#10;2、何冰娇&#10;3、安赛龙&#10;4、李宗伟"
+          ></textarea>
+          <div class="bulk-roster-actions">
+            <button class="button button-ghost" id="bulk-roster-clear" type="button">清空</button>
+            <button class="button button-ghost" id="bulk-roster-clipboard" type="button">从剪贴板粘贴</button>
+            <button class="button button-primary" id="bulk-roster-apply" type="button">识别并填入名单</button>
+          </div>
+          <div class="bulk-roster-status" id="bulk-roster-status" role="status" aria-live="polite">
+            粘贴接龙内容后，将自动填入下面的参赛名单
+          </div>
+        </section>
+
         <fieldset class="entrant-fieldset">
           <legend>
             <span id="entrant-list-title">参赛名单 · 16 个单位</span>
@@ -157,6 +184,7 @@ function renderSetup() {
     updateSetupMode(Number(entrantCountSelect.value)),
   );
   updateSetupMode(Number(entrantCountSelect.value));
+  bindBulkRosterControls();
 
   document.querySelector("#setup-form").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -218,6 +246,94 @@ function updateSetupMode(entrantCount) {
       input.disabled = !enabled;
     });
   });
+
+  const bulkRosterInput = document.querySelector("#bulk-roster-input");
+  if (bulkRosterInput?.value.trim()) {
+    applyBulkRoster(false);
+  } else {
+    updateBulkRosterStatus([], entrantCount);
+  }
+}
+
+function bindBulkRosterControls() {
+  const input = document.querySelector("#bulk-roster-input");
+  const applyButton = document.querySelector("#bulk-roster-apply");
+  const clipboardButton = document.querySelector("#bulk-roster-clipboard");
+  const clearButton = document.querySelector("#bulk-roster-clear");
+
+  input.addEventListener("input", () => applyBulkRoster(false));
+  applyButton.addEventListener("click", () => applyBulkRoster(true));
+  clearButton.addEventListener("click", () => {
+    input.value = "";
+    activeEntrantNameInputs().forEach((nameInput) => {
+      nameInput.value = "";
+    });
+    updateBulkRosterStatus([], currentSetupEntrantCount());
+    input.focus();
+  });
+  clipboardButton.addEventListener("click", async () => {
+    try {
+      input.value = await navigator.clipboard.readText();
+      applyBulkRoster(true);
+    } catch {
+      input.focus();
+      showToast("无法直接读取剪贴板，请长按输入框选择粘贴", true);
+    }
+  });
+}
+
+function applyBulkRoster(notify) {
+  const names = parseRosterText(
+    document.querySelector("#bulk-roster-input").value,
+  );
+  const entrantCount = currentSetupEntrantCount();
+  const inputs = activeEntrantNameInputs();
+
+  if (names.length > 0) {
+    inputs.forEach((input, index) => {
+      input.value = names[index] || "";
+    });
+  }
+  updateBulkRosterStatus(names, entrantCount);
+
+  if (!notify) return;
+  if (names.length === 0) {
+    showToast("没有识别到参赛单位，请检查接龙格式", true);
+  } else if (names.length < entrantCount) {
+    showToast(`已识别 ${names.length} 个，还差 ${entrantCount - names.length} 个`, true);
+  } else if (names.length > entrantCount) {
+    showToast(`已识别 ${names.length} 个，当前仅填入前 ${entrantCount} 个`);
+  } else {
+    showToast(`${entrantCount} 个参赛单位已自动填入`);
+  }
+}
+
+function updateBulkRosterStatus(names, entrantCount) {
+  const status = document.querySelector("#bulk-roster-status");
+  const count = document.querySelector("#bulk-roster-count");
+  const usedCount = Math.min(names.length, entrantCount);
+  count.textContent = `${usedCount} / ${entrantCount}`;
+  count.classList.toggle("is-ready", names.length === entrantCount);
+  status.classList.toggle("is-ready", names.length === entrantCount);
+  status.classList.toggle("has-warning", names.length > entrantCount);
+
+  if (names.length === 0) {
+    status.textContent = "粘贴接龙内容后，将自动填入下面的参赛名单";
+  } else if (names.length < entrantCount) {
+    status.textContent = `已识别 ${names.length} 个参赛单位，还需要补充 ${entrantCount - names.length} 个`;
+  } else if (names.length > entrantCount) {
+    status.textContent = `共识别 ${names.length} 个，当前模式只使用前 ${entrantCount} 个`;
+  } else {
+    status.textContent = `识别完成：${entrantCount} 个参赛单位已经填入，可继续逐项修改`;
+  }
+}
+
+function currentSetupEntrantCount() {
+  return Number(document.querySelector("#entrant-count").value);
+}
+
+function activeEntrantNameInputs() {
+  return [...document.querySelectorAll('[data-entrant-index]:not([hidden]) input[name="entrantName"]')];
 }
 
 function renderTournament() {
