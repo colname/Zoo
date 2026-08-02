@@ -6,6 +6,7 @@ import {
   finalizeCurrentRound,
   getCurrentRound,
   getStandings,
+  regenerateCurrentRound,
   selectWinner,
   tournamentIsComplete,
   undoLastSettlement,
@@ -68,6 +69,33 @@ test("first round avoids same-club pairings when a valid draw exists", () => {
       byId.get(match.bId).affiliation,
     );
   }
+});
+
+test("an unfinalized Swiss round can be redrawn without keeping entered results", () => {
+  const tournament = makeTournament();
+  const originalRound = getCurrentRound(tournament);
+  const originalPairing = originalRound.matches
+    .map((match) => [match.aId, match.bId].sort().join(":"))
+    .sort()
+    .join("|");
+
+  selectWinner(tournament, originalRound.matches[0].id, originalRound.matches[0].aId);
+  updateGameScore(tournament, originalRound.matches[0].id, 0, "a", 11);
+  regenerateCurrentRound(tournament);
+
+  const redrawnRound = getCurrentRound(tournament);
+  const redrawnPairing = redrawnRound.matches
+    .map((match) => [match.aId, match.bId].sort().join(":"))
+    .sort()
+    .join("|");
+  assert.notEqual(redrawnPairing, originalPairing);
+  assert.ok(redrawnRound.drawRevision > 0);
+  assert.ok(redrawnRound.matches.every((match) => !match.winnerId));
+  assert.ok(
+    redrawnRound.matches.every((match) =>
+      match.games.every((game) => game.a === 0 && game.b === 0),
+    ),
+  );
 });
 
 test("uses 21-point BO1 normally and 31-point BO1 for decider matches", () => {
@@ -168,6 +196,71 @@ test("Swiss completion creates eight quarterfinalists with protected 3-0 draws",
   }).length;
 
   assert.equal(protectedPairCount, 2);
+
+  const undefeatedIds = new Set(
+    tournament.participants
+      .filter((participant) => participant.wins === 3 && participant.losses === 0)
+      .map((participant) => participant.id),
+  );
+  const protectedMatchIndexes = quarterfinal.matches
+    .map((match, index) =>
+      undefeatedIds.has(match.aId) || undefeatedIds.has(match.bId) ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  assert.equal(protectedMatchIndexes.length, 2);
+  assert.notEqual(
+    Math.floor(protectedMatchIndexes[0] / 2),
+    Math.floor(protectedMatchIndexes[1] / 2),
+  );
+
+  for (const match of quarterfinal.matches) {
+    const protectedSeed = [match.aId, match.bId].find((id) => undefeatedIds.has(id));
+    selectWinner(tournament, match.id, protectedSeed || match.aId);
+  }
+  finalizeCurrentRound(tournament);
+  const semifinal = getCurrentRound(tournament);
+  for (const match of semifinal.matches) {
+    const protectedSeed = [match.aId, match.bId].find((id) => undefeatedIds.has(id));
+    selectWinner(tournament, match.id, protectedSeed || match.aId);
+  }
+  finalizeCurrentRound(tournament);
+  const final = getCurrentRound(tournament);
+  assert.deepEqual(
+    new Set([final.matches[0].aId, final.matches[0].bId]),
+    undefeatedIds,
+  );
+});
+
+test("redrawing the 16 entrant quarterfinal keeps both 3-0 seeds in separate halves", () => {
+  const tournament = makeTournament();
+  completeSwiss(tournament);
+
+  regenerateCurrentRound(tournament);
+  const quarterfinal = getCurrentRound(tournament);
+  const undefeatedIds = new Set(
+    tournament.participants
+      .filter((participant) => participant.wins === 3 && participant.losses === 0)
+      .map((participant) => participant.id),
+  );
+  const matchIndexes = quarterfinal.matches
+    .map((match, index) =>
+      undefeatedIds.has(match.aId) || undefeatedIds.has(match.bId) ? index : -1,
+    )
+    .filter((index) => index >= 0);
+
+  assert.equal(matchIndexes.length, 2);
+  assert.notEqual(Math.floor(matchIndexes[0] / 2), Math.floor(matchIndexes[1] / 2));
+  const byId = new Map(tournament.participants.map((participant) => [participant.id, participant]));
+  assert.equal(
+    quarterfinal.matches.filter((match) => {
+      const records = [byId.get(match.aId), byId.get(match.bId)].map(
+        (participant) => `${participant.wins}-${participant.losses}`,
+      );
+      return records.includes("3-0") && records.includes("3-2");
+    }).length,
+    2,
+  );
+  assert.ok(quarterfinal.drawRevision > 0);
 });
 
 test("knockout uses 15-point BO3 and produces one champion", () => {

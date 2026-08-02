@@ -3,6 +3,7 @@ import {
   finalizeCurrentRound,
   getCurrentRound,
   getStandings,
+  regenerateCurrentRound,
   selectWinner,
   tournamentIsComplete,
   undoLastSettlement,
@@ -513,6 +514,8 @@ function renderCurrentRound(round, participantMap) {
         ${round.matches.map((match) => renderMatch(match, participantMap, round)).join("")}
       </div>
 
+      ${renderRoundRedraw(round)}
+
       <div class="round-actions">
         ${
           canUndo()
@@ -562,6 +565,36 @@ function renderMatch(match, participantMap, round) {
       ${isOpen ? renderScoreEditor(match, a, b) : ""}
     </article>
   `;
+}
+
+function renderRoundRedraw(round) {
+  if (canRegenerateRound(round)) {
+    return `
+      <div class="round-redraw-panel">
+        <div>
+          <strong>对阵随机度不满意？</strong>
+          <span>重新抽签只影响当前未结算赛段，并继续遵守战绩、避重赛及种子分区规则。</span>
+        </div>
+        <button class="button button-ghost" id="regenerate-round-button" type="button">
+          <span aria-hidden="true">↻</span> 重新随机生成本轮对阵
+        </button>
+      </div>
+    `;
+  }
+
+  if (round.type === "knockout") {
+    return `
+      <div class="round-redraw-panel round-redraw-locked">
+        <div>
+          <strong>淘汰赛线路已锁定</strong>
+          <span>${round.stage === "quarterfinal" ? "本模式按 1-8、4-5、2-7、3-6 固定排种。" : "本轮由上一轮所在半区的胜者产生，不跨区重新抽签。"}</span>
+        </div>
+        <span class="round-lock-badge">分区保护</span>
+      </div>
+    `;
+  }
+
+  return "";
 }
 
 function renderScoreEditor(match, a, b) {
@@ -1047,6 +1080,34 @@ function bindTournamentActions(currentRound, complete) {
     }
   });
 
+  document
+    .querySelector("#regenerate-round-button")
+    ?.addEventListener("click", () => {
+      const hasRecordedData = currentRound.matches.some(
+        (match) =>
+          match.winnerId ||
+          match.games.some((game) => game.a !== 0 || game.b !== 0),
+      );
+      if (
+        hasRecordedData &&
+        !window.confirm("重新抽签会清空当前轮已经录入的胜者和比分，确定继续吗？")
+      ) {
+        return;
+      }
+      try {
+        regenerateCurrentRound(tournament);
+        openScoreMatchId = null;
+        persist();
+        render();
+        showToast("当前轮已重新随机生成，对阵规则保持不变");
+        document
+          .querySelector("#current-stage")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+
   document.querySelector("#reset-button").addEventListener("click", () => {
     if (!window.confirm("建议先导出存档。确定移除当前赛事并新建吗？")) return;
     tournament = null;
@@ -1166,6 +1227,14 @@ function canUndo() {
     tournament.rounds.length > 1 ||
     tournament.phase !== "swiss" ||
     (tournament.rounds.at(-1)?.finalized ?? false)
+  );
+}
+
+function canRegenerateRound(round) {
+  return (
+    round.type === "swiss" ||
+    (round.stage === "quarterfinal" &&
+      tournament.config.swissMode !== "seeding")
   );
 }
 

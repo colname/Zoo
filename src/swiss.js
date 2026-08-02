@@ -76,7 +76,10 @@ export function createTournament(options) {
 }
 
 export function buildSwissRound(tournament) {
-  const roundNumber = tournament.rounds.length + 1;
+  return buildSwissRoundForNumber(tournament, tournament.rounds.length + 1, 0);
+}
+
+function buildSwissRoundForNumber(tournament, roundNumber, drawRevision = 0) {
   const active = tournament.participants.filter(
     (participant) => participant.status === "active",
   );
@@ -93,13 +96,14 @@ export function buildSwissRound(tournament) {
 
   const pairs =
     roundNumber === 1
-      ? firstRoundPairs(active, tournament.seed)
-      : optimalSwissPairs(active, tournament.seed, roundNumber);
+      ? firstRoundPairs(active, tournament.seed, drawRevision)
+      : optimalSwissPairs(active, tournament.seed, roundNumber, drawRevision);
 
   return {
     type: "swiss",
     number: roundNumber,
     name: `瑞士轮第 ${roundNumber} 轮`,
+    drawRevision,
     finalized: false,
     warnings: buildSwissWarnings(pairs, roundNumber),
     matches: pairs.map(([a, b], index) => {
@@ -114,6 +118,48 @@ export function buildSwissRound(tournament) {
       };
     }),
   };
+}
+
+export function regenerateCurrentRound(tournament) {
+  const currentRound = getCurrentRound(tournament);
+  if (!currentRound || currentRound.finalized) {
+    throw new Error("当前没有可以重新抽签的未结算轮次。");
+  }
+
+  const originalPairing = pairingSignature(currentRound.matches);
+  const startingRevision = Number(currentRound.drawRevision || 0);
+  let replacement = null;
+
+  if (tournament.phase === "swiss") {
+    for (let offset = 1; offset <= 12; offset += 1) {
+      replacement = buildSwissRoundForNumber(
+        tournament,
+        currentRound.number,
+        startingRevision + offset,
+      );
+      if (pairingSignature(replacement.matches) !== originalPairing) break;
+    }
+    tournament.rounds[tournament.rounds.length - 1] = replacement;
+  } else if (
+    tournament.phase === "knockout" &&
+    currentRound.stage === "quarterfinal" &&
+    tournament.config.swissMode !== "seeding"
+  ) {
+    for (let offset = 1; offset <= 12; offset += 1) {
+      replacement = buildKnockout(tournament, startingRevision + offset);
+      if (
+        pairingSignature(replacement.rounds[0].matches) !== originalPairing
+      ) {
+        break;
+      }
+    }
+    tournament.knockout = replacement;
+  } else {
+    throw new Error("该轮对阵由固定种子或晋级路线决定，不能重新抽签。");
+  }
+
+  tournament.updatedAt = new Date().toISOString();
+  return tournament;
 }
 
 export function selectWinner(tournament, matchId, winnerId) {
@@ -373,7 +419,7 @@ export function swissIsComplete(tournament) {
   );
 }
 
-function buildKnockout(tournament) {
+function buildKnockout(tournament, drawRevision = 0) {
   if (tournament.config.swissMode === "seeding") {
     return buildSeededKnockout(tournament);
   }
@@ -395,7 +441,9 @@ function buildKnockout(tournament) {
     throw new Error("晋级战绩分布异常，无法按视频规则生成淘汰赛。");
   }
 
-  const random = seededRandom(`${tournament.seed}:knockout-draw`);
+  const random = seededRandom(
+    `${tournament.seed}:knockout-draw:${drawRevision}`,
+  );
   const topSeeds = shuffle(undefeated, random);
   const bottomSeeds = shuffle(threeTwo, random);
   const protectedPairs = [
@@ -407,7 +455,14 @@ function buildKnockout(tournament) {
     [openDraw[0], openDraw[1]],
     [openDraw[2], openDraw[3]],
   ];
-  const quarterfinalPairs = shuffle([...protectedPairs, ...openPairs], random);
+  const halves = shuffle(
+    [
+      [protectedPairs[0], openPairs[0]],
+      [protectedPairs[1], openPairs[1]],
+    ],
+    random,
+  );
+  const quarterfinalPairs = halves.flatMap((half) => shuffle(half, random));
 
   return {
     format: tournament.config.knockoutFormat,
@@ -419,8 +474,9 @@ function buildKnockout(tournament) {
         stage: "quarterfinal",
         name: "四分之一决赛",
         number: 1,
+        drawRevision,
         finalized: false,
-        warnings: [],
+        warnings: ["两名 3-0 种子分列上下半区，决赛前不会相遇。"],
         matches: quarterfinalPairs.map(([a, b], index) => ({
           id: `knockout-qf-m${index + 1}`,
           court: index + 1,
@@ -499,8 +555,8 @@ function buildKnockoutRound(stage, name, participantIds, matchCount) {
   };
 }
 
-function firstRoundPairs(participants, seed) {
-  const random = seededRandom(`${seed}:swiss-round-1`);
+function firstRoundPairs(participants, seed, drawRevision = 0) {
+  const random = seededRandom(`${seed}:swiss-round-1:${drawRevision}`);
   const tieBreaks = buildTieBreaks(participants.length, random);
 
   return solveOptimalPairs(participants, (a, b, aIndex, bIndex) => {
@@ -512,14 +568,16 @@ function firstRoundPairs(participants, seed) {
   });
 }
 
-function optimalSwissPairs(participants, seed, roundNumber) {
+function optimalSwissPairs(participants, seed, roundNumber, drawRevision = 0) {
   const ordered = [...participants].sort(
     (a, b) =>
       b.wins - a.wins ||
       a.losses - b.losses ||
       a.seed - b.seed,
   );
-  const random = seededRandom(`${seed}:swiss-round-${roundNumber}`);
+  const random = seededRandom(
+    `${seed}:swiss-round-${roundNumber}:${drawRevision}`,
+  );
   const tieBreaks = buildTieBreaks(ordered.length, random);
 
   return solveOptimalPairs(ordered, (a, b, aIndex, bIndex) => {
@@ -653,6 +711,13 @@ function shuffle(items, random) {
     [result[index], result[other]] = [result[other], result[index]];
   }
   return result;
+}
+
+function pairingSignature(matches) {
+  return matches
+    .map((match) => [match.aId, match.bId].sort().join(":"))
+    .sort()
+    .join("|");
 }
 
 function seededRandom(seed) {

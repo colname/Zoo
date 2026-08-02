@@ -706,6 +706,57 @@ fieldset {
   border-top: 1px solid var(--line);
 }
 
+.round-redraw-panel {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  margin-top: 20px;
+  background: rgb(200 255 71 / 0.045);
+  border: 1px dashed rgb(200 255 71 / 0.28);
+  border-radius: 12px;
+}
+
+.round-redraw-panel strong,
+.round-redraw-panel span {
+  display: block;
+}
+
+.round-redraw-panel strong {
+  margin-bottom: 5px;
+  color: #dfe7df;
+  font-size: 12px;
+}
+
+.round-redraw-panel div > span {
+  color: #77827a;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.round-redraw-panel .button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  color: var(--lime);
+  border-color: rgb(200 255 71 / 0.3);
+}
+
+.round-redraw-locked {
+  background: rgb(255 209 102 / 0.035);
+  border-color: rgb(255 209 102 / 0.2);
+}
+
+.round-lock-badge {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  color: var(--yellow);
+  font-size: 9px;
+  font-weight: 800;
+  background: rgb(255 209 102 / 0.08);
+  border-radius: 8px;
+}
+
 .standings-section,
 .history-section {
   margin-top: 22px;
@@ -1053,6 +1104,15 @@ summary small {
   .round-actions {
     align-items: stretch;
     flex-direction: column-reverse;
+  }
+
+  .round-redraw-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .round-redraw-panel .button {
+    width: 100%;
   }
 
   .round-actions .button {
